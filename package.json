@@ -1,0 +1,19 @@
+{
+  "name": "mp3-manager",
+  "description": "mp3 Manager",
+  "version": "1.0.0",
+  "author": "thegecko",
+  "license": "MIT",
+  "scripts": {
+    "prepare": "yarn build",
+    "clean": "git clean -f -x ./node_modules ./dist",
+    "build": "node build.mjs",
+    "watch": "node build.mjs watch"
+  },
+  "dependencies": {
+    "preact": "^10.24.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

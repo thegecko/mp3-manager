@@ -92,8 +92,22 @@ export default function App() {
         event.preventDefault();
     }
 
-    const fileNodes = state.files.map((file) => <li>{`${file.folder || ''}/${file.name} in data/${file.id}.data`}</li>);
+    const folders = state.files
+        .map(file => file.folder)
+        .filter((value, index, array) => array.indexOf(value) === index);
 
+    const folderNodes = folders.map(folder => {
+        const files = state.files
+            .filter(file => file.folder === folder)
+            .map(file => <li>{`${file.name} (data/${file.id}.data)`}</li>);
+        return (
+            <>
+                <span>{folder || 'ROOT'}</span>
+                <ul>{files}</ul>
+            </>
+        );
+    });
+    
     return (
         <>
             <button
@@ -107,7 +121,7 @@ export default function App() {
                 onDrop={onDrop}
                 onDragOver={onDragOver}
             >
-                <ul>{fileNodes}</ul>
+                {folderNodes}
                 Drag one or more files to this drop zone
             </div>
         </>

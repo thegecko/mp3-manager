@@ -1,15 +1,11 @@
 import { useState } from "preact/hooks";
-
-interface MusicFile {
-    id: number,
-    name: string;
-    folder?: string;
-}
+import { EsysDatabase, MusicFile } from "./esys-database";
 
 export default function App() {
     const [state, setState] = useState({
-        dbHandle: undefined as FileSystemFileHandle | undefined,
         dataHandle: undefined as FileSystemDirectoryHandle | undefined,
+        dbHandle: undefined as FileSystemFileHandle | undefined,
+        folders: [] as string[],
         files: [] as MusicFile[]
     });
     //const [fileSystem, setFileSystem] = useState<FileSystemDirectoryHandle>();
@@ -19,11 +15,15 @@ export default function App() {
         const fileSystem = await window.showDirectoryPicker({ startIn: "music", mode: 'readwrite' });
         if (fileSystem) {
             try {
-                const dbHandle = await fileSystem.getFileHandle('db.json');
-                const dataHandle = await fileSystem.getDirectoryHandle('data');
-                const db = await dbHandle.getFile()
-                const contents = await db.text();
-                const files: MusicFile[] = JSON.parse(contents);
+                const rootHandle = await fileSystem.getDirectoryHandle('ESYS');
+                const dataHandle = await rootHandle.getDirectoryHandle('NW-MP3');
+                const dbHandle = await rootHandle.getFileHandle('PBLIST1.DAT');
+
+                const dbFile = await dbHandle.getFile();
+                const contents = await dbFile.arrayBuffer();
+                const db = new EsysDatabase(contents);
+                const folders = await db.getFolders();
+                // const files = await db.getFiles();
                 /*
             const entries = fileSystem.entries();
             const files = [];
@@ -31,7 +31,7 @@ export default function App() {
                 files.push(name);
             }
                 */
-                setState({...state, dataHandle, dbHandle, files});
+                setState({...state, dataHandle, dbHandle, folders});
             } catch (e) {
                 alert('check this is the right folder');
             }
@@ -92,22 +92,12 @@ export default function App() {
         event.preventDefault();
     }
 
-    const folders = state.files
-        .map(file => file.folder)
-        .filter((value, index, array) => array.indexOf(value) === index);
+    const folderNodes = state.folders.map(folder => (        
+        <>
+            <span>{folder || 'ROOT'}</span>
+        </>
+    ));
 
-    const folderNodes = folders.map(folder => {
-        const files = state.files
-            .filter(file => file.folder === folder)
-            .map(file => <li>{`${file.name} (data/${file.id}.data)`}</li>);
-        return (
-            <>
-                <span>{folder || 'ROOT'}</span>
-                <ul>{files}</ul>
-            </>
-        );
-    });
-    
     return (
         <>
             <button

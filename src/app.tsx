@@ -6,7 +6,7 @@ export default function App() {
         dataHandle: undefined as FileSystemDirectoryHandle | undefined,
         dbHandle: undefined as FileSystemFileHandle | undefined,
         folders: [] as Folder[],
-        files: [] as Track[]
+        tracks: [] as Track[]
     });
     //const [fileSystem, setFileSystem] = useState<FileSystemDirectoryHandle>();
 
@@ -23,7 +23,7 @@ export default function App() {
                 const contents = await dbFile.arrayBuffer();
                 const db = new EsysDatabase(contents);
                 const folders = await db.getFolders();
-                const files = await db.getFiles();
+                const tracks = await db.getTracks();
                 /*
             const entries = fileSystem.entries();
             const files = [];
@@ -31,7 +31,7 @@ export default function App() {
                 files.push(name);
             }
                 */
-                setState({...state, dataHandle, dbHandle, folders, files});
+                setState({...state, dataHandle, dbHandle, folders, tracks});
             } catch (e) {
                 alert('check this is the right folder');
             }
@@ -39,14 +39,15 @@ export default function App() {
     }
 
     const saveFile = async (file: File) => {
+        /*
         let id = 1;
-        for (const file of state.files) {
+        for (const file of state.tracks) {
             if (file.id >= id) {
                 id = file.id + 1;
             }
         }
 
-        const files = state.files;
+        const files = state.tracks;
         files.push({ id, name: file.name });
         
         if (state.dbHandle) {
@@ -63,7 +64,8 @@ export default function App() {
             await writable.close();
         }
 
-        setState({...state, files});
+        setState({...state, tracks: files});
+        */
     };
 
     const onDrop = async (event: DragEvent) => {
@@ -98,6 +100,12 @@ export default function App() {
         </>
     ));
 
+    const trackNodes = state.tracks.map(track => (        
+        <>
+            <span>{track.artist}: {track.title} ({track.file})</span>
+        </>
+    ));
+
     return (
         <>
             <button
@@ -112,6 +120,7 @@ export default function App() {
                 onDragOver={onDragOver}
             >
                 {folderNodes}
+                {trackNodes}
                 Drag one or more files to this drop zone
             </div>
         </>

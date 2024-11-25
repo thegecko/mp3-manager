@@ -1,21 +1,4 @@
-/*
-https://waider.ie/~waider/hacks/workshop/c/mple/FILE_FORMAT.txt
-
-typedef struct {
-  guint8  signature[8]; // "WMPLESYS", hence the name of the module 
-
-  guint32 timestamp;    // ctime of the ESYS folder 
-  guint32 msn;          // media serial number 
-  guint32 magic;        // no idea what this is 
-
-  guint32 folders;      // #folders 
-  guint32 tracks;       // number of tracks on the device 
-
-  // XORing the header 32 bits at a time should result in this
-  //   checksum, or XORing including this should result in zero 
-  guint32 checksum;     // XOR checksum 
-} pblist_hdr;
-*/
+// https://waider.ie/~waider/hacks/workshop/c/mple/FILE_FORMAT.txt
 
 export interface Folder {
     name: string;
@@ -23,10 +6,13 @@ export interface Folder {
 }
 
 export interface Track {
-    id: number,
-    name: string;
-    folder?: string;
+    id?: number,
+    file: string;
+    title: string;
+    artist: string;
 }
+
+const roundUp = (input: number, multiple = 8): number => input % multiple ? input - input & multiple + multiple : input;
 
 export class EsysDatabase {
 
@@ -46,15 +32,7 @@ export class EsysDatabase {
         console.log(`folders: ${this.folderCount}, files: ${this.trackCount}`);
         for (let i = 0; i < this.folderCount; i++) {
             const start = 32 + (i * 256);
-            let terminator = 0;
-            for (let j = 0; j < 252; j++) {
-                if (this.view.getUint16(start + j) === 0) {
-                    terminator = j;
-                    break;
-                }
-            }
-            const bytes = this.view.buffer.slice(start, start + terminator);
-            const name = new TextDecoder('UTF-16BE').decode(bytes).trim();
+            const name = this.getText(start, 252);
             const offset = this.view.getUint32(start + 252);
             folders.push({ name, offset });
         }
@@ -62,20 +40,42 @@ export class EsysDatabase {
         return folders;
     }
 
-    public async getFiles(): Promise<Track[]> {
+    public async getFiles(): Promise<number[]> {
         const files: number[] = [];
         const o = 32 + (this.folderCount * 256);
         for (let i = 0; i < this.trackCount; i++) {
             const start = o + (i * 2);
             const f = this.view.getUint16(start);
-            //const t = this.view.getUint16(start+1);
             files.push(f);
         }
 
-        console.log(files);
-        return [{
-            id: 1,
-            name: `folders: ${this.folderCount}, files: ${this.trackCount}`
-        }];
+        return files;
+    }
+
+    public async getTracks(): Promise<Track[]> {
+        const tracks: Track[] = [];
+        const o = 32 + (this.folderCount * 256) + roundUp(this.trackCount * 2);
+        for (let i = 0; i < this.trackCount; i++) {
+            const start = o + (i * 768);
+            const file = this.getText(start, 256);
+            const title = this.getText(start+256, 256);
+            const artist = this.getText(start+512, 256);
+            tracks.push({ file, title, artist });
+        }
+
+        console.log(tracks);
+        return tracks;
+    }
+
+    protected getText(offest: number, length: number): string {
+        let terminator = 0;
+        for (let j = 0; j < length; j++) {
+            if (this.view.getUint16(offest + j) === 0) {
+                terminator = j;
+                break;
+            }
+        }
+        const bytes = this.view.buffer.slice(offest, offest + terminator);
+        return new TextDecoder('UTF-16BE').decode(bytes).trim();
     }
 }

@@ -1,12 +1,12 @@
 import { useState } from "preact/hooks";
-import { EsysDatabase, MusicFile } from "./esys-database";
+import { EsysDatabase, Folder, Track } from "./esys-database";
 
 export default function App() {
     const [state, setState] = useState({
         dataHandle: undefined as FileSystemDirectoryHandle | undefined,
         dbHandle: undefined as FileSystemFileHandle | undefined,
-        folders: [] as string[],
-        files: [] as MusicFile[]
+        folders: [] as Folder[],
+        files: [] as Track[]
     });
     //const [fileSystem, setFileSystem] = useState<FileSystemDirectoryHandle>();
 
@@ -23,7 +23,7 @@ export default function App() {
                 const contents = await dbFile.arrayBuffer();
                 const db = new EsysDatabase(contents);
                 const folders = await db.getFolders();
-                // const files = await db.getFiles();
+                const files = await db.getFiles();
                 /*
             const entries = fileSystem.entries();
             const files = [];
@@ -31,7 +31,7 @@ export default function App() {
                 files.push(name);
             }
                 */
-                setState({...state, dataHandle, dbHandle, folders});
+                setState({...state, dataHandle, dbHandle, folders, files});
             } catch (e) {
                 alert('check this is the right folder');
             }
@@ -94,7 +94,7 @@ export default function App() {
 
     const folderNodes = state.folders.map(folder => (        
         <>
-            <span>{folder || 'ROOT'}</span>
+            <span>{folder.name} {folder.offset}</span>
         </>
     ));
 

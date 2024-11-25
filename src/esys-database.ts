@@ -12,7 +12,7 @@ export interface Track {
     artist: string;
 }
 
-const roundUp = (input: number, multiple = 8): number => input % multiple ? input - input & multiple + multiple : input;
+const roundUp = (input: number, multiple = 8): number => input % multiple ? input + (multiple *2) - (input % multiple) : input;
 
 export class EsysDatabase {
 

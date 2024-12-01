@@ -1,5 +1,8 @@
 import { useState } from "preact/hooks";
 import { EsysDatabase, Folder, Track } from "./esys-database";
+import { SortableTree } from "./tree/sortable-tree";
+import { Wrapper } from "./tree/Wrapper";
+
 
 export default function App() {
     const [state, setState] = useState({
@@ -31,7 +34,7 @@ export default function App() {
                 files.push(name);
             }
                 */
-                setState({...state, dataHandle, dbHandle, folders, tracks});
+                setState({ ...state, dataHandle, dbHandle, folders, tracks });
             } catch (e) {
                 alert('check this is the right folder');
             }
@@ -46,7 +49,7 @@ export default function App() {
                 id = file.id + 1;
             }
         }
-
+    
         const files = state.tracks;
         files.push({ id, name: file.name });
         
@@ -55,7 +58,7 @@ export default function App() {
             await writable.write(JSON.stringify(files));
             await writable.close();
         }
-
+    
         if (state.dataHandle) {
             const fileHandle = await state.dataHandle.getFileHandle(`${id}.data`, { create: true });
             const writable = await fileHandle.createWritable();
@@ -63,60 +66,65 @@ export default function App() {
             await writable.write(buffer)
             await writable.close();
         }
-
+    
         setState({...state, tracks: files});
         */
     };
-
-    const onDrop = async (event: DragEvent) => {
-        event.preventDefault();
-
-        if (event.dataTransfer?.items) {
-            // Use DataTransferItemList interface to access the file(s)
-            [...event.dataTransfer.items].forEach((item, i) => {
-                // If dropped items aren't files, reject them
-                if (item.kind === "file") {
-                    const file = item.getAsFile();
-                    if (file) {
-                        saveFile(file);
+    /*
+        const onDrop = async (event: DragEvent) => {
+            event.preventDefault();
+    
+            if (event.dataTransfer?.items) {
+                // Use DataTransferItemList interface to access the file(s)
+                [...event.dataTransfer.items].forEach((item, i) => {
+                    // If dropped items aren't files, reject them
+                    if (item.kind === "file") {
+                        const file = item.getAsFile();
+                        if (file) {
+                            saveFile(file);
+                        }
                     }
-                }
-            });
-        } else if (event.dataTransfer?.files) {
-            // Use DataTransfer interface to access the file(s)
-            [...event.dataTransfer.files].forEach((file, i) => {
-                saveFile(file);
-            });
+                });
+            } else if (event.dataTransfer?.files) {
+                // Use DataTransfer interface to access the file(s)
+                [...event.dataTransfer.files].forEach((file, i) => {
+                    saveFile(file);
+                });
+            }
         }
-    }
-
+    */
     const onDragOver = (event: DragEvent) => {
-        event.preventDefault();
+        //console.log(event);
+        //event.preventDefault();
     }
 
-    const folderNodes = state.folders.map(folder => (        
+    const folderNodes = state.folders.map(folder => (
         <>
             <span>{folder.name} {folder.offset}</span>
         </>
     ));
 
-    const trackNodes = state.tracks.map(track => (        
+    const trackNodes = state.tracks.map(track => (
         <>
             <span>{track.artist}: {track.title} ({track.file})</span>
         </>
     ));
 
+
     return (
         <>
+        <Wrapper>
+<SortableTree collapsible indicator removable />
+</Wrapper>
             <button
                 class="hover:bg-blue-400 group flex items-center rounded-md bg-blue-500 text-white text-sm font-medium pl-2 pr-3 py-2 shadow-sm"
                 onClick={onClick}>
-                    Select drive
+                Select drive
             </button>
             <div
                 class="hover:border-blue-500 hover:border-solid hover:bg-white hover:text-blue-500 group w-full flex flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-sm leading-6 text-slate-900 font-medium py-3"
                 id='drop_zone'
-                onDrop={onDrop}
+                //onDrop={onDrop}
                 onDragOver={onDragOver}
             >
                 {folderNodes}

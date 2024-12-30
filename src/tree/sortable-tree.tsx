@@ -37,6 +37,7 @@ import type {FlattenedItem, SensorContext, TreeItems} from './types';
 import {sortableTreeKeyboardCoordinates} from './keyboard-coordinates';
 import {SortableTreeItem} from './sortable-tree-item';
 import {CSS} from '@dnd-kit/utilities';
+import { FileSensor } from '../file-sensor';
 
 const initialItems: TreeItems = [
   {
@@ -149,7 +150,7 @@ export function SortableTree({
     sortableTreeKeyboardCoordinates(sensorContext, indicator, indentationWidth)
   );
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(FileSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter,
     })

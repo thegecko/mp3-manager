@@ -14,6 +14,7 @@ const style = {
 export interface Item {
 	id: number
 	text: string
+    isNew?: boolean
 }
 
 export interface ContainerState {
@@ -71,6 +72,7 @@ export default function App() {
                     [hoverIndex, 0,                 {
                         id: prevCards.length + 1,
                         text: "new shit",
+                        isNew: true
                     } as Item],
                 ],
             }),
@@ -78,13 +80,14 @@ export default function App() {
     }, [])
 
     const renderCard = useCallback(
-        (card: { id: number; text: string }, index: number) => {
+        (card: Item, index: number) => {
             return (
                 <Card
                     key={card.id}
                     index={index}
                     id={card.id}
                     text={card.text}
+                    isNew={card.isNew}
                     moveCard={moveCard}
                     newCard={newCard}
                     onDrop={handleFileDrop}
@@ -100,7 +103,6 @@ export default function App() {
         folders: [] as Folder[],
         tracks: [] as Track[]
     });
-    //const [fileSystem, setFileSystem] = useState<FileSystemDirectoryHandle>();
 
     const onClick = async () => {
         // Open file picker and destructure the result the first handle
@@ -130,8 +132,53 @@ export default function App() {
         }
     }
 
+    const folderNodes = state.folders.map(folder => (        
+        <>
+            <span>{folder.name} {folder.offset}</span>
+        </>
+    ));
+
+    const trackNodes = state.tracks.map(track => (        
+        <>
+            <span>{track.artist}: {track.title} ({track.file})</span>
+        </>
+    ));
+
+    const handleFileDrop = useCallback((id: number, item: { files: any[] }) => {
+        if (item) {
+            const files = item.files
+            setCards(previous =>
+                previous.map(prev => ({
+                    ...prev,
+                    text: prev.id === id ? files[0].name : prev.text,
+                    isNew: false
+                })
+            ));
+        }
+    }, [])
+
+    return (
+        <>
+            <DndProvider backend={HTML5Backend}>
+                <div style={style}>{cards.map((card, i) => renderCard(card, i))}</div>
+            </DndProvider>
+            <button
+                class="hover:bg-blue-400 group flex items-center rounded-md bg-blue-500 text-white text-sm font-medium pl-2 pr-3 py-2 shadow-sm"
+                onClick={onClick}>
+                    Select drive
+            </button>
+            <div
+                class="hover:border-blue-500 hover:border-solid hover:bg-white hover:text-blue-500 group w-full flex flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-sm leading-6 text-slate-900 font-medium py-3"
+            >
+                {folderNodes}
+                {trackNodes}
+            </div>
+        </>
+    );
+}
+
+    /*
     const saveFile = async (file: File) => {
-        /*
         let id = 1;
         for (const file of state.tracks) {
             if (file.id >= id) {
@@ -157,7 +204,6 @@ export default function App() {
         }
 
         setState({...state, tracks: files});
-        */
     };
 
     const onDrop = async (event: DragEvent) => {
@@ -181,55 +227,4 @@ export default function App() {
             });
         }
     }
-
-    const onDragOver = (event: DragEvent) => {
-        event.preventDefault();
-    }
-
-    const folderNodes = state.folders.map(folder => (        
-        <>
-            <span>{folder.name} {folder.offset}</span>
-        </>
-    ));
-
-    const trackNodes = state.tracks.map(track => (        
-        <>
-            <span>{track.artist}: {track.title} ({track.file})</span>
-        </>
-    ));
-
-    const handleFileDrop = useCallback((id: number, item: { files: any[] }) => {
-        if (item) {
-            const files = item.files
-            setCards(previous =>
-                previous.map(prev => ({
-                    ...prev,
-                    text: prev.id === id ? files[0].name : prev.text
-                })
-            ));
-        }
-    }, [])
-
-    return (
-        <>
-            <DndProvider backend={HTML5Backend}>
-                <div style={style}>{cards.map((card, i) => renderCard(card, i))}</div>
-            </DndProvider>
-            <button
-                class="hover:bg-blue-400 group flex items-center rounded-md bg-blue-500 text-white text-sm font-medium pl-2 pr-3 py-2 shadow-sm"
-                onClick={onClick}>
-                    Select drive
-            </button>
-            <div
-                class="hover:border-blue-500 hover:border-solid hover:bg-white hover:text-blue-500 group w-full flex flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-sm leading-6 text-slate-900 font-medium py-3"
-                id='drop_zone'
-                onDrop={onDrop}
-                onDragOver={onDragOver}
-            >
-                {folderNodes}
-                {trackNodes}
-                Drag one or more files to this drop zone
-            </div>
-        </>
-    );
-}
+    */

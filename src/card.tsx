@@ -20,6 +20,7 @@ export interface CardProps {
 	id: any
 	text: string
 	index: number
+	isNew?: boolean
 	moveCard: (dragIndex: number, hoverIndex: number) => void
 	newCard: (hoverIndex: number) => void
 	onDrop: (index: number, item: { files: any[] }) => void
@@ -32,7 +33,7 @@ interface DragItem {
 	files: any[]
 }
 
-export const Card: FC<CardProps> = ({ id, text, index, moveCard, newCard, onDrop }) => {
+export const Card: FC<CardProps> = ({ id, text, index, isNew, moveCard, newCard, onDrop }) => {
 	const ref = useRef<HTMLDivElement>(null)
 	const [{ handlerId }, drop] = useDrop<
 		DragItem,
@@ -119,7 +120,8 @@ export const Card: FC<CardProps> = ({ id, text, index, moveCard, newCard, onDrop
 		})
 	})
 
-	const opacity = isDragging ? 0.2 : 1
+	const dragging = isDragging || isNew
+	const opacity = dragging ? 0.2 : 1
 	drag(drop(ref))
 	return (
 		<div ref={ref} style={{ ...style, opacity }} data-handler-id={handlerId}>

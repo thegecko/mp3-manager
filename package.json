@@ -6,13 +6,16 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "prepare": "yarn build",
+    "prepare": "npm run build",
     "clean": "git clean -f -x ./node_modules ./dist",
     "build": "vite build",
     "dev": "vite"
   },
   "dependencies": {
-    "preact": "^10.24.3"
+    "immutability-helper": "^3.1.1",
+    "preact": "^10.24.3",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.1",

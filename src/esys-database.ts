@@ -6,7 +6,6 @@ export interface Folder {
 }
 
 export interface Track {
-    id?: number,
     file: string;
     title: string;
     artist: string;
@@ -63,7 +62,6 @@ export class EsysDatabase {
             tracks.push({ file, title, artist });
         }
 
-        console.log(tracks);
         return tracks;
     }
 

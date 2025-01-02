@@ -1,101 +1,18 @@
-import { useState } from "preact/hooks";
-import { EsysDatabase, Folder, Track } from "./esys-database";
-
-import update from 'immutability-helper'
-import { useCallback } from 'preact/compat'
-import { Card } from "./card";
+import { useState, useCallback } from "preact/hooks";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { EsysDatabase, Folder, Track } from "./esys-database";
+import { Card } from "./card";
+import { TargetBox } from "./target-box";
 
-const style = {
-	width: 400,
-}
-
-export interface Item {
-	id: number
+export interface Card {
+	id: string
 	text: string
     isNew?: boolean
 }
 
-export interface ContainerState {
-	cards: Item[]
-}
-
 export default function App() {
-    const [cards, setCards] = useState([
-        {
-            id: 1,
-            text: 'Write a cool JS library',
-        },
-        {
-            id: 2,
-            text: 'Make it generic enough',
-        },
-        {
-            id: 3,
-            text: 'Write README',
-        },
-        {
-            id: 4,
-            text: 'Create some examples',
-        },
-        {
-            id: 5,
-            text: 'Spam in Twitter and IRC to promote it (note that this element is taller than the others)',
-        },
-        {
-            id: 6,
-            text: '???',
-        },
-        {
-            id: 7,
-            text: 'PROFIT',
-        },
-    ])
-
-    const moveCard = useCallback((dragIndex: number, hoverIndex: number) => {
-        setCards((prevCards: Item[]) =>
-            update(prevCards, {
-                $splice: [
-                    [dragIndex, 1],
-                    [hoverIndex, 0, prevCards[dragIndex] as Item],
-                ],
-            }),
-        )
-    }, [])
-
-    const newCard = useCallback((hoverIndex: number) => {
-        setCards((prevCards: Item[]) =>
-            update(prevCards, {
-                $splice: [
-                    [prevCards.length + 1, 1],
-                    [hoverIndex, 0,                 {
-                        id: prevCards.length + 1,
-                        text: "new shit",
-                        isNew: true
-                    } as Item],
-                ],
-            }),
-        )
-    }, [])
-
-    const renderCard = useCallback(
-        (card: Item, index: number) => {
-            return (
-                <Card
-                    key={card.id}
-                    index={index}
-                    id={card.id}
-                    text={card.text}
-                    isNew={card.isNew}
-                    moveCard={moveCard}
-                    newCard={newCard}
-                    onDrop={handleFileDrop}
-                />
-            )
-        },
-        [],
-    )
+    const [cards, setCards] = useState<Card[]>([])
 
     const [state, setState] = useState({
         dataHandle: undefined as FileSystemDirectoryHandle | undefined,
@@ -118,6 +35,9 @@ export default function App() {
                 const db = new EsysDatabase(contents);
                 const folders = await db.getFolders();
                 const tracks = await db.getTracks();
+                const folderCards = folders.map(folder => ({ id: folder.offset.toString(), text: folder.name }));
+                const trackCards = tracks.map(track => ({ id: track.file, text: `${track.artist}: ${track.title} (${track.file})` }));
+
                 /*
             const entries = fileSystem.entries();
             const files = [];
@@ -126,53 +46,77 @@ export default function App() {
             }
                 */
                 setState({...state, dataHandle, dbHandle, folders, tracks});
+                setCards([
+                    ...folderCards,
+                    ...trackCards
+                ]);
             } catch (e) {
                 alert('check this is the right folder');
             }
         }
     }
 
-    const folderNodes = state.folders.map(folder => (        
-        <>
-            <span>{folder.name} {folder.offset}</span>
-        </>
-    ));
+    const onNew = useCallback((id: string) => {
+        setCards((prevCards: Card[]) => (
+            [
+                ...prevCards,
+                {
+                    id,
+                    text: `new shit ${id}`,
+                    isNew: true
+                }
+            ]
+        ));
+    }, [cards])
 
-    const trackNodes = state.tracks.map(track => (        
-        <>
-            <span>{track.artist}: {track.title} ({track.file})</span>
-        </>
-    ));
+    const onMove = useCallback((dragIndex: number, hoverIndex: number) => {
+        setCards(cards => {
+            const newCards = [...cards];
+            const deletedCards = newCards.splice(dragIndex, 1);
+            newCards.splice(hoverIndex, 0, ...deletedCards);
+            return newCards;
+        });
+    }, [cards])
 
-    const handleFileDrop = useCallback((id: number, item: { files: any[] }) => {
+    const onDrop = useCallback((item: { files: any[] }) => {
         if (item) {
             const files = item.files
             setCards(previous =>
                 previous.map(prev => ({
                     ...prev,
-                    text: prev.id === id ? files[0].name : prev.text,
+                    text: !!prev.isNew ? files[0].name : prev.text,
                     isNew: false
                 })
             ));
         }
     }, [])
 
+    const cardNodes = cards.map((card, index) =>
+        <Card
+            key={card.id}
+            id={card.id}
+            index={index}
+            text={card.text}
+            isNew={card.isNew}
+            onMove={onMove}
+        />
+    );
+
     return (
         <>
             <DndProvider backend={HTML5Backend}>
-                <div style={style}>{cards.map((card, i) => renderCard(card, i))}</div>
+                <TargetBox
+                    onNew={onNew}
+                    onDrop={onDrop}
+                >
+                    {cardNodes}
+                </TargetBox>
             </DndProvider>
             <button
                 class="hover:bg-blue-400 group flex items-center rounded-md bg-blue-500 text-white text-sm font-medium pl-2 pr-3 py-2 shadow-sm"
                 onClick={onClick}>
                     Select drive
             </button>
-            <div
-                class="hover:border-blue-500 hover:border-solid hover:bg-white hover:text-blue-500 group w-full flex flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-sm leading-6 text-slate-900 font-medium py-3"
-            >
-                {folderNodes}
-                {trackNodes}
-            </div>
         </>
     );
 }

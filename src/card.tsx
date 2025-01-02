@@ -1,7 +1,6 @@
-import type { Identifier, XYCoord } from 'dnd-core'
-import type { FC } from 'preact/compat'
-import { useRef } from 'preact/compat'
+import { type FC, useRef } from 'preact/compat'
 import { useDrag, useDrop } from 'react-dnd'
+import type { Identifier, XYCoord } from 'dnd-core'
 import { NativeTypes } from 'react-dnd-html5-backend'
 
 const ItemTypes = {
@@ -9,21 +8,19 @@ const ItemTypes = {
 }
 
 const style = {
-	border: '1px dashed gray',
-	padding: '0.5rem 1rem',
-	marginBottom: '.5rem',
+	border: '1px solid gray',
+	padding: '0.2rem',
+	marginBottom: '.2rem',
 	backgroundColor: 'white',
 	cursor: 'move',
 }
 
 export interface CardProps {
-	id: any
+	id: string
 	text: string
 	index: number
 	isNew?: boolean
-	moveCard: (dragIndex: number, hoverIndex: number) => void
-	newCard: (hoverIndex: number) => void
-	onDrop: (index: number, item: { files: any[] }) => void
+	onMove: (dragIndex: number, hoverIndex: number) => void
 }
 
 interface DragItem {
@@ -33,7 +30,7 @@ interface DragItem {
 	files: any[]
 }
 
-export const Card: FC<CardProps> = ({ id, text, index, isNew, moveCard, newCard, onDrop }) => {
+export const Card: FC<CardProps> = ({ id, text, index, isNew, onMove }) => {
 	const ref = useRef<HTMLDivElement>(null)
 	const [{ handlerId }, drop] = useDrop<
 		DragItem,
@@ -41,11 +38,6 @@ export const Card: FC<CardProps> = ({ id, text, index, isNew, moveCard, newCard,
 		{ handlerId: Identifier | null }
 	>({
 		accept: [ItemTypes.CARD, NativeTypes.FILE],
-		drop(item) {
-			if (item.files && onDrop) {
-				onDrop(id, item)
-			}
-		},
 		collect(monitor) {
 			return {
 				handlerId: monitor.getHandlerId()
@@ -53,14 +45,6 @@ export const Card: FC<CardProps> = ({ id, text, index, isNew, moveCard, newCard,
 		},
 		hover(item: DragItem, monitor) {
 			if (!ref.current) {
-				return
-			}
-
-			if (item.index === undefined) {
-				if (monitor.getItemType() === NativeTypes.FILE) {
-					newCard(index)
-					item.index = index
-				}
 				return
 			}
 
@@ -100,7 +84,7 @@ export const Card: FC<CardProps> = ({ id, text, index, isNew, moveCard, newCard,
 			}
 
 			// Time to actually perform the action
-			moveCard(dragIndex, hoverIndex)
+			onMove(dragIndex, hoverIndex)
 
 			// Note: we're mutating the monitor item here!
 			// Generally it's better to avoid mutations,

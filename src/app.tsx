@@ -2,8 +2,15 @@ import { useState, useCallback } from "preact/hooks";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { EsysDatabase, Folder, Track } from "./esys-database";
-import { Card } from "./card";
-import { TargetBox } from "./target-box";
+import { File } from "./file";
+import { FileManager } from "./file-manager";
+import { Footer } from "./footer";
+
+const style = {
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column'
+}
 
 export interface Card {
 	id: string
@@ -11,7 +18,7 @@ export interface Card {
     isNew?: boolean
 }
 
-export default function App() {
+export const App = () => {
     const [cards, setCards] = useState<Card[]>([])
 
     const [state, setState] = useState({
@@ -106,7 +113,7 @@ export default function App() {
     }, [])
 
     const cardNodes = cards.map(card =>
-        <Card
+        <File
             key={card.id}
             id={card}
             text={card.text}
@@ -116,23 +123,19 @@ export default function App() {
     );
 
     return (
-        <>
+        <div style={style}>
             <DndProvider backend={HTML5Backend}>
-                <TargetBox
+                <FileManager
                     onNew={onNew}
                     onDrop={onDrop}
                 >
                     {cardNodes}
-                </TargetBox>
+                </FileManager>
             </DndProvider>
-            <button
-                class="hover:bg-blue-400 group flex items-center rounded-md bg-blue-500 text-white text-sm font-medium pl-2 pr-3 py-2 shadow-sm"
-                onClick={onClick}>
-                    Select drive
-            </button>
-        </>
+            <Footer onSelectDrive={onClick} />
+        </div>
     );
-}
+};
 
     /*
     const saveFile = async (file: File) => {

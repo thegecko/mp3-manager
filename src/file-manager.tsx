@@ -1,9 +1,11 @@
-import type { CSSProperties, FC, PropsWithChildren } from 'preact/compat'
-import { type DropTargetMonitor, useDrop } from 'react-dnd'
+import type { ComponentChild } from 'preact'
+import type { PropsWithChildren } from 'preact/compat'
+import { useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
 
-const style: CSSProperties = {
-	width: '100%',
+const style = {
+	flex: 1,
+    overflow: 'auto',
 	padding: '1rem',
 	textAlign: 'center',
 }
@@ -13,9 +15,9 @@ export interface TargetBoxProps {
 	onDrop: (item: { files: any[] }) => void
 }
 
-export const TargetBox: FC<TargetBoxProps> = (props: PropsWithChildren<TargetBoxProps>) => {
+export const FileManager = (props: PropsWithChildren<TargetBoxProps>) => {
 	const { onDrop } = props
-	const [{ canDrop, isOver }, drop] = useDrop(
+	const [, drop] = useDrop(
 		() => ({
 			accept: [NativeTypes.FILE],
 			drop(item: { files: any[] }) {
@@ -27,21 +29,15 @@ export const TargetBox: FC<TargetBoxProps> = (props: PropsWithChildren<TargetBox
                 if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
 					item.id = props.onNew()
                 }
-            },
-			collect: (monitor: DropTargetMonitor) => {
-				return {
-					isOver: monitor.isOver(),
-					canDrop: monitor.canDrop(),
-				}
-			},
+            }
 		}),
 		[props],
 	)
 
-	const isActive = canDrop && isOver
+	const hasFiles = (props.children as ComponentChild[]).length > 0;
 	return (
 		<div ref={drop} style={style}>
-			{props.children ? undefined : isActive ? 'Release to drop' : 'Drag file here'}
+			{hasFiles ? undefined : 'Drag Files Here'}
             {props.children}
 		</div>
 	)

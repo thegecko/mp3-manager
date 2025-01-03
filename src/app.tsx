@@ -56,27 +56,41 @@ export default function App() {
         }
     }
 
-    const onNew = useCallback((id: string) => {
-        setCards((prevCards: Card[]) => (
-            [
-                ...prevCards,
-                {
-                    id,
-                    text: `new shit ${id}`,
-                    isNew: true
-                }
-            ]
-        ));
+    const onNew = useCallback(() => {
+        const newCard = {
+            id: `new item ${cards.length}`,
+            text: `new file`,
+            isNew: true
+        };
+        setCards(prevCards => [
+            ...prevCards,
+            newCard
+        ]);
+        return newCard;
     }, [cards])
 
-    const onMove = useCallback((dragIndex: number, hoverIndex: number) => {
-        setCards(cards => {
-            const newCards = [...cards];
-            const deletedCards = newCards.splice(dragIndex, 1);
-            newCards.splice(hoverIndex, 0, ...deletedCards);
-            return newCards;
+    let requestedFrame: number | undefined;
+    const onMove = (dragRef: Card, hoverRef: Card): void => {
+        if (requestedFrame) {
+            return;
+        }
+
+        const newCards = [...cards];
+
+        const dragIndex = newCards.indexOf(dragRef)
+		const hoverIndex = newCards.indexOf(hoverRef)
+
+        if(dragIndex < 0 || hoverIndex < 0) {
+            return;
+        }
+        const deletedCards = newCards.splice(dragIndex, 1);
+        newCards.splice(hoverIndex, 0, ...deletedCards);
+
+        requestedFrame = requestAnimationFrame(() => {
+            setCards(newCards);
+            requestedFrame = undefined;
         });
-    }, [cards])
+	}
 
     const onDrop = useCallback((item: { files: any[] }) => {
         if (item) {
@@ -91,11 +105,10 @@ export default function App() {
         }
     }, [])
 
-    const cardNodes = cards.map((card, index) =>
+    const cardNodes = cards.map(card =>
         <Card
             key={card.id}
-            id={card.id}
-            index={index}
+            id={card}
             text={card.text}
             isNew={card.isNew}
             onMove={onMove}

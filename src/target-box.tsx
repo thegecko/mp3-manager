@@ -1,18 +1,15 @@
-import { ComponentChild } from 'preact'
 import type { CSSProperties, FC, PropsWithChildren } from 'preact/compat'
 import { type DropTargetMonitor, useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
 
 const style: CSSProperties = {
-	border: '1px solid gray',
-	height: '800px',
 	width: '100%',
-	padding: '2rem',
+	padding: '1rem',
 	textAlign: 'center',
 }
 
 export interface TargetBoxProps {
-    onNew: (id: string) => void
+    onNew: () => any
 	onDrop: (item: { files: any[] }) => void
 }
 
@@ -27,12 +24,8 @@ export const TargetBox: FC<TargetBoxProps> = (props: PropsWithChildren<TargetBox
 				}
 			},
             hover(item: any, monitor) {
-                if (item.index === undefined) {
-                    if (monitor.getItemType() === NativeTypes.FILE) {
-                        const index = props.children ? (props.children as ComponentChild[]).length : 0
-                        props.onNew(`${index + 1}`)
-                        item.index = index;
-                    }
+                if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
+					item.id = props.onNew()
                 }
             },
 			collect: (monitor: DropTargetMonitor) => {
@@ -48,7 +41,7 @@ export const TargetBox: FC<TargetBoxProps> = (props: PropsWithChildren<TargetBox
 	const isActive = canDrop && isOver
 	return (
 		<div ref={drop} style={style}>
-			{isActive ? 'Release to drop' : 'Drag file here'}
+			{props.children ? undefined : isActive ? 'Release to drop' : 'Drag file here'}
             {props.children}
 		</div>
 	)

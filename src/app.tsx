@@ -1,10 +1,10 @@
-import { useState, useCallback } from "preact/hooks";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
-import { EsysDatabase, Folder, Track } from "./esys-database";
-import { File } from "./file";
-import { FileManager } from "./file-manager";
-import { Footer } from "./footer";
+import { useState, useCallback } from 'preact/hooks';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { EsysDatabase, Folder, Track } from './esys-database';
+import { File } from './file';
+import { FileManager } from './file-manager';
+import { Footer } from './footer';
 
 const style = {
     height: '100vh',
@@ -24,13 +24,12 @@ export const App = () => {
     const [state, setState] = useState({
         dataHandle: undefined as FileSystemDirectoryHandle | undefined,
         dbHandle: undefined as FileSystemFileHandle | undefined,
-        folders: [] as Folder[],
-        tracks: [] as Track[]
+        folders: [] as Folder[]
     });
 
     const onClick = async () => {
         // Open file picker and destructure the result the first handle
-        const fileSystem = await window.showDirectoryPicker({ startIn: "music", mode: 'readwrite' });
+        const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
         if (fileSystem) {
             try {
                 const rootHandle = await fileSystem.getDirectoryHandle('ESYS');
@@ -40,10 +39,15 @@ export const App = () => {
                 const dbFile = await dbHandle.getFile();
                 const contents = await dbFile.arrayBuffer();
                 const db = new EsysDatabase(contents);
-                const folders = await db.getFolders();
-                const tracks = await db.getTracks();
-                const folderCards = folders.map(folder => ({ id: folder.offset.toString(), text: folder.name }));
-                const trackCards = tracks.map(track => ({ id: track.file, text: `${track.artist}: ${track.title} (${track.file})` }));
+                const folders = await db.getFoldersWithTracks();
+
+                const cards: Card[] = [];
+                for (const folder of folders) {
+                    cards.push({ id: folder.offset.toString(), text: `${folder.name} (${folder.tracks.length})` });
+                    for (const track of folder.tracks) {
+                        cards.push({ id: track.id.toString(), text: `${track.artist}: ${track.name}` });
+                    }
+                }
 
                 /*
             const entries = fileSystem.entries();
@@ -52,11 +56,8 @@ export const App = () => {
                 files.push(name);
             }
                 */
-                setState({...state, dataHandle, dbHandle, folders, tracks});
-                setCards([
-                    ...folderCards,
-                    ...trackCards
-                ]);
+                setState({...state, dataHandle, dbHandle, folders });
+                setCards(cards);
             } catch (e) {
                 alert('check this is the right folder');
             }
@@ -173,7 +174,7 @@ export const App = () => {
             // Use DataTransferItemList interface to access the file(s)
             [...event.dataTransfer.items].forEach((item, i) => {
                 // If dropped items aren't files, reject them
-                if (item.kind === "file") {
+                if (item.kind === 'file') {
                     const file = item.getAsFile();
                     if (file) {
                         saveFile(file);

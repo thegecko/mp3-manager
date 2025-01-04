@@ -3,7 +3,7 @@ import { useDrag, useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
 
 const ItemTypes = {
-	CARD: 'card',
+	FILE: 'file',
 }
 
 const style = {
@@ -27,7 +27,7 @@ export interface FileProps {
 export const File = memo((props: FileProps) => {
 	const ref = useRef(null)
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
-		type: ItemTypes.CARD,
+		type: ItemTypes.FILE,
 		item: { id: props.id },
 		collect: (monitor) => {
 			const result = {
@@ -39,7 +39,7 @@ export const File = memo((props: FileProps) => {
 	})
 
 	const [, connectDrop] = useDrop({
-		accept: [ItemTypes.CARD, NativeTypes.FILE],
+		accept: [ItemTypes.FILE, NativeTypes.FILE],
 		hover({ id: dragId }: { id: any; type: string }) {
 			if (dragId && props.id && dragId !== props.id) {
 				props.onMove(dragId, props.id)

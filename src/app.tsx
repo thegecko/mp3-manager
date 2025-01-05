@@ -1,45 +1,127 @@
-import { useState } from "preact/hooks";
-import { EsysDatabase, Folder, Track } from "./esys-database";
+import { useState, useCallback } from 'preact/hooks';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { detectDatabase, Database } from './database/database-detector';
+import { File } from './file';
+import { FileManager } from './file-manager';
+import { Footer } from './footer';
 
-export default function App() {
-    const [state, setState] = useState({
-        dataHandle: undefined as FileSystemDirectoryHandle | undefined,
-        dbHandle: undefined as FileSystemFileHandle | undefined,
-        folders: [] as Folder[],
-        tracks: [] as Track[]
-    });
-    //const [fileSystem, setFileSystem] = useState<FileSystemDirectoryHandle>();
+const style = {
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column'
+}
+
+export interface Card {
+	id: string
+	text: string
+    isNew?: boolean
+}
+
+export const App = () => {
+    const [cards, setCards] = useState([] as Card[]);
+    const [_db, setDb] = useState(undefined as Database | undefined);
 
     const onClick = async () => {
         // Open file picker and destructure the result the first handle
-        const fileSystem = await window.showDirectoryPicker({ startIn: "music", mode: 'readwrite' });
+        const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
         if (fileSystem) {
             try {
-                const rootHandle = await fileSystem.getDirectoryHandle('ESYS');
-                const dataHandle = await rootHandle.getDirectoryHandle('NW-MP3');
-                const dbHandle = await rootHandle.getFileHandle('PBLIST1.DAT');
+                const database = await detectDatabase(fileSystem);
+                const folders = await database.getFolders();
 
-                const dbFile = await dbHandle.getFile();
-                const contents = await dbFile.arrayBuffer();
-                const db = new EsysDatabase(contents);
-                const folders = await db.getFolders();
-                const tracks = await db.getTracks();
-                /*
-            const entries = fileSystem.entries();
-            const files = [];
-            for await (const [name] of entries) {
-                files.push(name);
-            }
-                */
-                setState({...state, dataHandle, dbHandle, folders, tracks});
+                const cards: Card[] = [];
+                for (const folder of folders) {
+                    cards.push({ id: folder.offset.toString(), text: `${folder.name} (${folder.tracks.length})` });
+                    for (const track of folder.tracks) {
+                        cards.push({ id: track.id.toString(), text: `${track.artist}: ${track.name}` });
+                    }
+                }
+
+                setDb(database);
+                setCards(cards);
             } catch (e) {
-                alert('check this is the right folder');
+                alert(e);
             }
         }
     }
 
+    const onNew = useCallback(() => {
+        const newCard = {
+            id: `new item ${cards.length}`,
+            text: `new file`,
+            isNew: true
+        };
+        setCards(prevCards => [
+            ...prevCards,
+            newCard
+        ]);
+        return newCard;
+    }, [cards])
+
+    let requestedFrame: number | undefined;
+    const onMove = (dragRef: Card, hoverRef: Card): void => {
+        if (requestedFrame) {
+            return;
+        }
+
+        const newCards = [...cards];
+
+        const dragIndex = newCards.indexOf(dragRef)
+		const hoverIndex = newCards.indexOf(hoverRef)
+
+        if(dragIndex < 0 || hoverIndex < 0) {
+            return;
+        }
+        const deletedCards = newCards.splice(dragIndex, 1);
+        newCards.splice(hoverIndex, 0, ...deletedCards);
+
+        requestedFrame = requestAnimationFrame(() => {
+            setCards(newCards);
+            requestedFrame = undefined;
+        });
+	}
+
+    const onDrop = useCallback((item: { files: any[] }) => {
+        if (item) {
+            const files = item.files
+            setCards(previous =>
+                previous.map(prev => ({
+                    ...prev,
+                    text: !!prev.isNew ? files[0].name : prev.text,
+                    isNew: false
+                })
+            ));
+        }
+    }, [])
+
+    const cardNodes = cards.map(card =>
+        <File
+            key={card.id}
+            id={card}
+            text={card.text}
+            isNew={card.isNew}
+            onMove={onMove}
+        />
+    );
+
+    return (
+        <div style={style}>
+            <DndProvider backend={HTML5Backend}>
+                <FileManager
+                    onNew={onNew}
+                    onDrop={onDrop}
+                >
+                    {cardNodes}
+                </FileManager>
+            </DndProvider>
+            <Footer onSelectDrive={onClick} />
+        </div>
+    );
+};
+
+    /*
     const saveFile = async (file: File) => {
-        /*
         let id = 1;
         for (const file of state.tracks) {
             if (file.id >= id) {
@@ -65,7 +147,6 @@ export default function App() {
         }
 
         setState({...state, tracks: files});
-        */
     };
 
     const onDrop = async (event: DragEvent) => {
@@ -75,7 +156,7 @@ export default function App() {
             // Use DataTransferItemList interface to access the file(s)
             [...event.dataTransfer.items].forEach((item, i) => {
                 // If dropped items aren't files, reject them
-                if (item.kind === "file") {
+                if (item.kind === 'file') {
                     const file = item.getAsFile();
                     if (file) {
                         saveFile(file);
@@ -89,40 +170,4 @@ export default function App() {
             });
         }
     }
-
-    const onDragOver = (event: DragEvent) => {
-        event.preventDefault();
-    }
-
-    const folderNodes = state.folders.map(folder => (        
-        <>
-            <span>{folder.name} {folder.offset}</span>
-        </>
-    ));
-
-    const trackNodes = state.tracks.map(track => (        
-        <>
-            <span>{track.artist}: {track.title} ({track.file})</span>
-        </>
-    ));
-
-    return (
-        <>
-            <button
-                class="hover:bg-blue-400 group flex items-center rounded-md bg-blue-500 text-white text-sm font-medium pl-2 pr-3 py-2 shadow-sm"
-                onClick={onClick}>
-                    Select drive
-            </button>
-            <div
-                class="hover:border-blue-500 hover:border-solid hover:bg-white hover:text-blue-500 group w-full flex flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-sm leading-6 text-slate-900 font-medium py-3"
-                id='drop_zone'
-                onDrop={onDrop}
-                onDragOver={onDragOver}
-            >
-                {folderNodes}
-                {trackNodes}
-                Drag one or more files to this drop zone
-            </div>
-        </>
-    );
-}
+    */

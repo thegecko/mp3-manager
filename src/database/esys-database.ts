@@ -125,6 +125,18 @@ export class EsysDatabase implements Database {
         return false;
     }
 
+    public async getTrackId(): Promise<number> {
+        for (let i = 0; i < this.trackCount; i++) {
+            const idOffset = this.fileOffset + (i * 2);
+            const id = this.view.getUint16(idOffset);
+            if (id !== i) {
+                return i;
+            }
+        }
+
+        return this.trackCount + 1;
+    }
+
     public async readFile(id: number): Promise<ArrayBuffer | undefined> {
         try {
             const fileHandle = await this.dataFolder.getFileHandle(fileName(id));
@@ -136,9 +148,9 @@ export class EsysDatabase implements Database {
         }
     }
 
-    public async writeFile(id: number, data: ArrayBuffer): Promise<boolean> {
+    public async writeFile(id: number, data: ArrayBuffer, duration: number): Promise<boolean> {
         try {
-            const encoded = this.encodeFile(data);
+            const encoded = this.encodeFile(data, duration);
             const fileHandle = await this.dataFolder.getFileHandle(fileName(id), { create: true });
             await this.writeFileHandle(fileHandle, encoded);
             return true;
@@ -255,7 +267,7 @@ export class EsysDatabase implements Database {
         }
     }
 
-    protected encodeFile(buffer: ArrayBuffer): ArrayBuffer {
+    protected encodeFile(buffer: ArrayBuffer, duration: number): ArrayBuffer {
         // TODO
         return buffer;
     }

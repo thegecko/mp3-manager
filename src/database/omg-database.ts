@@ -42,11 +42,15 @@ export class OmgDatabase implements Database {
         throw new Error('Method not implemented.');
     }
 
+    public getTrackId(): Promise<number> {
+        throw new Error('Method not implemented.');
+    }
+
     public readFile(id: number): Promise<ArrayBuffer | undefined> {
         throw new Error('Method not implemented.');
     }
 
-    public writeFile(id: number, data: ArrayBuffer): Promise<boolean> {
+    public writeFile(id: number, data: ArrayBuffer, duration: number): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
 

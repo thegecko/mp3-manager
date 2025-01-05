@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'preact/hooks';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { EsysDatabase, Folder, Track } from './esys-database';
+import { detectDatabase, Database } from './database/database-detector';
 import { File } from './file';
 import { FileManager } from './file-manager';
 import { Footer } from './footer';
@@ -19,27 +19,16 @@ export interface Card {
 }
 
 export const App = () => {
-    const [cards, setCards] = useState<Card[]>([])
-
-    const [state, setState] = useState({
-        dataHandle: undefined as FileSystemDirectoryHandle | undefined,
-        dbHandle: undefined as FileSystemFileHandle | undefined,
-        folders: [] as Folder[]
-    });
+    const [cards, setCards] = useState([] as Card[]);
+    const [_db, setDb] = useState(undefined as Database | undefined);
 
     const onClick = async () => {
         // Open file picker and destructure the result the first handle
         const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
         if (fileSystem) {
             try {
-                const rootHandle = await fileSystem.getDirectoryHandle('ESYS');
-                const dataHandle = await rootHandle.getDirectoryHandle('NW-MP3');
-                const dbHandle = await rootHandle.getFileHandle('PBLIST1.DAT');
-
-                const dbFile = await dbHandle.getFile();
-                const contents = await dbFile.arrayBuffer();
-                const db = new EsysDatabase(contents);
-                const folders = await db.getFoldersWithTracks();
+                const database = await detectDatabase(fileSystem);
+                const folders = await database.getFolders();
 
                 const cards: Card[] = [];
                 for (const folder of folders) {
@@ -49,17 +38,10 @@ export const App = () => {
                     }
                 }
 
-                /*
-            const entries = fileSystem.entries();
-            const files = [];
-            for await (const [name] of entries) {
-                files.push(name);
-            }
-                */
-                setState({...state, dataHandle, dbHandle, folders });
+                setDb(database);
                 setCards(cards);
             } catch (e) {
-                alert('check this is the right folder');
+                alert(e);
             }
         }
     }

@@ -3,10 +3,10 @@ import { isOmg, OmgDatabase } from './omg-database';
 
 export interface Database {
     getFolders(): Promise<Folder[]>;
-    setFolders(folders: Folder[]): Promise<void>;
-    readFile(id: number): Promise<ArrayBuffer>;
-    writeFile(id: number, data: ArrayBuffer): Promise<void>;
-    deleteFile(id: number): Promise<void>;
+    setFolders(folders: Folder[]): Promise<boolean>;
+    readFile(id: number): Promise<ArrayBuffer | undefined>;
+    writeFile(id: number, data: ArrayBuffer): Promise<boolean>;
+    deleteFile(id: number): Promise<boolean>;
 }
 
 export interface Folder {

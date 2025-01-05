@@ -38,19 +38,19 @@ export class OmgDatabase implements Database {
         throw new Error('Method not implemented.');
     }
 
-    public setFolders(folders: Folder[]): Promise<void> {
+    public setFolders(folders: Folder[]): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
 
-    public readFile(id: number): Promise<ArrayBuffer> {
+    public readFile(id: number): Promise<ArrayBuffer | undefined> {
         throw new Error('Method not implemented.');
     }
 
-    public writeFile(id: number, data: ArrayBuffer): Promise<void> {
+    public writeFile(id: number, data: ArrayBuffer): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
 
-    public deleteFile(id: number): Promise<void> {
+    public deleteFile(id: number): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
 }

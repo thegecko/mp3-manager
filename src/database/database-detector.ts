@@ -6,7 +6,7 @@ export interface Database {
     setFolders(folders: Folder[]): Promise<boolean>;
     getTrackId(): Promise<number>;
     readFile(id: number): Promise<ArrayBuffer | undefined>;
-    writeFile(id: number, data: ArrayBuffer, duration: number): Promise<boolean>;
+    writeFile(id: number, data: ArrayBuffer, duration: number, frames: number): Promise<boolean>;
     deleteFile(id: number): Promise<boolean>;
 }
 

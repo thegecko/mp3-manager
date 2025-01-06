@@ -11,6 +11,8 @@ import { Database, Folder, Track } from './database-detector';
 const ROOT_FOLDER = 'ESYS';
 const DATA_FOLDER = 'NW-MP3';
 const DB_FILE = 'PBLIST1.DAT';
+const BACKUP_FILE = 'PBLIST0.DAT';
+const HEADER_TEXT = 'WMPLESYS';
 
 export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boolean> => {
     // Check for ESYS folder
@@ -26,6 +28,13 @@ export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boo
 
 const roundUp = (input: number, multiple = 8): number => input % multiple ? input + (multiple * 2) - (input % multiple) : input;
 const fileName = (id: number) => `MP${id.toString(16).padStart(4, '0')}.DAT`;
+const fatTime = (date = new Date()): number => 
+    ((date.getFullYear() - 80) << 25) | 
+    ((date.getMonth() + 1) << 21) |
+    (date.getDate() << 16) |
+    (date.getHours() << 11) |
+    (date.getMinutes() << 5) |
+    (date.getSeconds() >> 1);
 
 export class EsysDatabase implements Database {
 
@@ -34,32 +43,37 @@ export class EsysDatabase implements Database {
             throw new Error('Invalid folder');
         }
 
-        const rootHandle = await fileSystem.getDirectoryHandle(ROOT_FOLDER);
-        const dataHandle = await rootHandle.getDirectoryHandle(DATA_FOLDER);
-        const dbHandle = await rootHandle.getFileHandle(DB_FILE);
+        const rootFolder = await fileSystem.getDirectoryHandle(ROOT_FOLDER);
+        const dataFolder = await rootFolder.getDirectoryHandle(DATA_FOLDER);
+        const dbHandle = await rootFolder.getFileHandle(DB_FILE);
         const dbFile = await dbHandle.getFile();
         const buffer = await dbFile.arrayBuffer();
 
-        return new EsysDatabase(dataHandle, dbHandle, buffer);
+        return new EsysDatabase(rootFolder, dataFolder, buffer);
     }
 
     protected view: DataView;
+    protected timestamp: number;
+    protected serialNumber: number;
     protected folderCount: number;
     protected trackCount: number;
     protected fileOffset: number;
     protected trackOffset: number;
 
     protected constructor(
+        protected rootFolder: FileSystemDirectoryHandle,
         protected dataFolder: FileSystemDirectoryHandle,
-        protected dbFile: FileSystemFileHandle,
         buffer: ArrayBuffer
     ) {
         this.view = new DataView(buffer);
+        this.checkHeader();
+        this.timestamp = this.view.getUint32(8);
+        this.serialNumber = this.view.getUint32(12); // 145373760
+        // 4 byte unknown - not implemented
         this.folderCount = this.view.getUint32(20);
         this.trackCount = this.view.getUint32(24);
         this.fileOffset = 32 + (this.folderCount * 256);
         this.trackOffset = 32 + (this.folderCount * 256) + roundUp(this.trackCount * 2);
-        this.checksum();
     }
 
     public async getFolders(): Promise<Folder[]> {
@@ -87,6 +101,10 @@ export class EsysDatabase implements Database {
 
     public async setFolders(folders: Folder[]): Promise<boolean> {
         try {
+            // Backup
+            const backupFile = await this.rootFolder.getFileHandle(BACKUP_FILE, {create: true});
+            await this.writeFileHandle(backupFile, this.view.buffer);
+
             // Re-initialise
             this.folderCount = folders.length;
             const tracks = folders.reduce((acc, folder) => [...acc, ...folder.tracks], [] as Track[]);
@@ -99,7 +117,7 @@ export class EsysDatabase implements Database {
 
             // Header
             this.createHeader();
-            this.checksum();
+            this.checkHeader();
 
             // Folders
             let offset = this.fileOffset;
@@ -115,7 +133,8 @@ export class EsysDatabase implements Database {
             this.setTracks(tracks);
 
             // Write data file
-            await this.writeFileHandle(this.dbFile, buffer);
+            const dbFile = await this.rootFolder.getFileHandle(DB_FILE, {create: true});
+            await this.writeFileHandle(dbFile, buffer);
 
             return true;
         } catch (e) {
@@ -148,9 +167,9 @@ export class EsysDatabase implements Database {
         }
     }
 
-    public async writeFile(id: number, data: ArrayBuffer, duration: number): Promise<boolean> {
+    public async writeFile(id: number, data: ArrayBuffer, duration: number, frames: number): Promise<boolean> {
         try {
-            const encoded = this.encodeFile(data, duration);
+            const encoded = this.encodeFile(data, duration, frames);
             const fileHandle = await this.dataFolder.getFileHandle(fileName(id), { create: true });
             await this.writeFileHandle(fileHandle, encoded);
             return true;
@@ -185,7 +204,14 @@ export class EsysDatabase implements Database {
         return false;
     }
 
-    protected checksum(): void {
+    protected checkHeader(): void {
+        const buffer = this.view.buffer.slice(0, 8);
+        const text = new TextDecoder().decode(buffer);
+        if (text !== HEADER_TEXT) {
+            console.log(text);
+            throw new Error('Invalid db file');
+        }
+
         let lastWord = this.view.getUint32(0);
 
         for (let i = 4; i < 32; i += 4) {
@@ -199,20 +225,17 @@ export class EsysDatabase implements Database {
 
     protected createHeader(): void {
         // WMPLESYS
-        const text = new TextEncoder().encode('WMPLESYS');
-        new Uint8Array(this.view.buffer).set(text, 0);
+        const text = new TextEncoder().encode(HEADER_TEXT);
+        new Uint8Array(this.view.buffer).set(text, 0)
 
-        // 4 byte timestamp - not implemented
-        // 4 byte device serial number - not implemented
+        this.view.setUint32(8, this.timestamp);
+        this.view.setUint32(12, this.serialNumber);
         // 4 byte unknown - not implemented
-
-        // Folder and track count
         this.view.setUint32(20, this.folderCount);
         this.view.setUint32(24, this.trackCount);
 
         // 4 byte checksum
         let lastWord = this.view.getUint32(0);
-
         for (let i = 4; i < 28; i += 4) {
             lastWord ^= this.view.getUint32(i);
         }
@@ -267,7 +290,7 @@ export class EsysDatabase implements Database {
         }
     }
 
-    protected encodeFile(buffer: ArrayBuffer, duration: number): ArrayBuffer {
+    protected encodeFile(buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
         // TODO
         return buffer;
     }

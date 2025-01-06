@@ -98,10 +98,12 @@ export const App = () => {
             try {
                 const id = await db.getTrackId();
 
-                const buffer = await file.arrayBuffer();
-                const audio = await ctx.decodeAudioData(buffer);
+                const audioBuffer = await file.arrayBuffer();
+                const audio = await ctx.decodeAudioData(audioBuffer);
                 const duration = Math.round(audio.duration * 1000);
-                await db.writeFile(id, buffer, duration);
+
+                const buffer = await file.arrayBuffer();
+                await db.writeFile(id, buffer, duration, audio.length);
 
                 const id3 = await id3js.fromFile(file);
 

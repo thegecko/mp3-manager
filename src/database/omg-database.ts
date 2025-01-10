@@ -42,7 +42,7 @@ export class OmgDatabase implements Database {
         throw new Error('Method not implemented.');
     }
 
-    public getNextTrackId(): Promise<number> {
+    public getNextTrackId(idFrom?: number): Promise<number> {
         throw new Error('Method not implemented.');
     }
 

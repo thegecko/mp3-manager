@@ -4,7 +4,7 @@ import { isOmg, OmgDatabase } from './omg-database';
 export interface Database {
     getFolders(): Promise<Folder[]>;
     setFolders(folders: Folder[]): Promise<boolean>;
-    getNextTrackId(): Promise<number>;
+    getNextTrackId(idFrom?: number): Promise<number>;
     readFile(id: number): Promise<ArrayBuffer | undefined>;
     writeFile(id: number, data: ArrayBuffer, duration: number, frames: number): Promise<boolean>;
     deleteFile(id: number): Promise<boolean>;

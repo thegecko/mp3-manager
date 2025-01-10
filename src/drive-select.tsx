@@ -1,9 +1,8 @@
 import { detectDatabase } from './database/database-detector';
-import { useDb, useFolders } from './context';
+import { useDb } from './context';
 
 export const DriveSelect = () => {
     const { updateDb } = useDb();
-    const { updateFolders } = useFolders();
 
     const onClick = async () => {
         const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
@@ -11,8 +10,6 @@ export const DriveSelect = () => {
             try {
                 const database = await detectDatabase(fileSystem);
                 updateDb(database);
-                const folders = await database.getFolders();
-                updateFolders(folders);
             } catch (e) {
                 alert(e);
             }

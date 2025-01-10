@@ -88,9 +88,8 @@ export class EsysDatabase implements Database {
             let tracks: Track[] = [];
             try {
                 tracks = await this.getTracks(from, lastOffset);
-
             } catch (e) {
-                console.log(e);
+                console.error(e);
             }
             folders.unshift({ name, offset, tracks });
             lastOffset = from;
@@ -138,13 +137,13 @@ export class EsysDatabase implements Database {
 
             return true;
         } catch (e) {
-            console.log(e);
+            console.error(e);
         }
 
         return false;
     }
 
-    public async getNextTrackId(): Promise<number> {
+    public async getNextTrackId(idFrom = 0): Promise<number> {
         const ids = new Set<number>();
 
         for (let i = 0; i < this.trackCount; i++) {
@@ -153,7 +152,7 @@ export class EsysDatabase implements Database {
             ids.add(id);
         }
 
-        for (let i = 1; i <= this.trackCount; i++) {
+        for (let i = idFrom + 1; i <= this.trackCount; i++) {
             if (!ids.has(i)) {
                 return i;
             }
@@ -169,7 +168,7 @@ export class EsysDatabase implements Database {
             const data = await file.arrayBuffer();
             return this.decodeFile(data);
         } catch (e) {
-            console.log(e);
+            console.error(e);
         }
     }
 
@@ -180,7 +179,7 @@ export class EsysDatabase implements Database {
             await this.writeFileHandle(fileHandle, encoded);
             return true;
         } catch (e) {
-            console.log(e);
+            console.error(e);
         }
 
         return false;
@@ -191,7 +190,7 @@ export class EsysDatabase implements Database {
             await this.dataFolder.removeEntry(fileName(id));
             return true;
         } catch (e) {
-            console.log(e);
+            console.error(e);
         }
 
         return false;
@@ -204,7 +203,7 @@ export class EsysDatabase implements Database {
             await file.close();
             return true;
         } catch (e) {
-            console.log(e);
+            console.error(e);
         }
 
         return false;
@@ -214,7 +213,6 @@ export class EsysDatabase implements Database {
         const buffer = this.view.buffer.slice(0, 8);
         const text = new TextDecoder().decode(buffer);
         if (text !== HEADER_TEXT) {
-            console.log(text);
             throw new Error('Invalid db file');
         }
 

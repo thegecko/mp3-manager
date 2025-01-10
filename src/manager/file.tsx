@@ -20,15 +20,16 @@ const style = {
 
 export interface FileProps {
 	id: any;
+	type: 'folder' | 'track' | 'new';
 	text: string;
-	isNew?: boolean;
 	onMove: (dragRef: any, hoverRef: any) => void;
 	onDrop: (item: any) => void
+	onDelete: (id: any) => void
 }
 
 export const File = memo((props: FileProps) => {
 	const ref = useRef(null)
-	const { id, text, isNew, onMove, onDrop } = props
+	const { id, type, text, onMove, onDrop, onDelete } = props
 
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
 		type: ItemTypes.FILE,
@@ -56,11 +57,19 @@ export const File = memo((props: FileProps) => {
 
 	connectDrag(ref)
 	connectDrop(ref)
-	const opacity = (isDragging || isNew) ? 0.2 : 1
-	const containerStyle = useMemo(() => ({ ...style, opacity }), [opacity])
+	const fontWeight = type === 'folder' ? 'bold' : 'normal'
+	const opacity = (isDragging || type === 'new') ? 0.2 : 1
+
 	return (
-		<div ref={ref} style={containerStyle} data-handler-id={handlerId}>
-			{text}
+		<div ref={ref} style={{...style, opacity}} data-handler-id={handlerId}>
+			<span style={{ fontWeight }}>
+				{text}
+			</span>
+			<button
+				class="bg-blue-500 hover:bg-blue-400 rounded-md text-white px-2 py-1 m-2 justify-end"
+				onClick={() => onDelete(id)}>
+				Delete
+			</button>
 		</div>
 	)
 });

@@ -8,35 +8,62 @@ import { useDb, useFolders } from '../context';
 import { File } from './file';
 import { getFiles } from './util';
 
-export interface Card {
-    id: string
-    text: string
-    isNew?: boolean
+interface Card {
+    id: number;
+    type: 'folder' | 'track' | 'new';
+    name: string;
+    artist?: string;
+    file?: string;
 }
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
+const folderToCard = (folder: Folder): Card => ({
+    id: folder.offset,
+    type: 'folder',
+    name: folder.name
+});
+const trackToCard = (track: Track): Card => ({
+    id: track.id,
+    type: 'track',
+    name: track.name,
+    artist: track.artist,
+    file: track.file
+});
+const cardToTrack = (card: Card): Track => ({
+    id: card.id,
+    name: card.name,
+    artist: card.artist || '',
+    file: card.file || ''
+});
+const newFolder = (name: string, tracks: Track[] = []): Folder => ({
+    name,
+    offset: -1,
+    tracks
+});
+
+const NEW_CARD_ID = -99;
 
 export const FileManager = () => {
     const { db } = useDb();
-    const { folders } = useFolders();
+    const { folders, updateFolders } = useFolders();
     const [cards, setCards] = useState([] as Card[]);
 
     useMemo(() => {
         const cards: Card[] = [];
         for (const folder of folders) {
-            cards.push({ id: folder.offset.toString(), text: `${folder.name} (${folder.offset})` });
+            cards.push(folderToCard(folder));
             for (const track of folder.tracks) {
-                cards.push({ id: track.id.toString(), text: `${track.artist}: ${track.name}` });
+                cards.push(trackToCard(track));
             }
         }
         setCards(cards);
     }, [folders]);
 
     const onNew = useCallback(() => {
-        const newCard = {
-            id: `new item ${cards.length}`,
-            text: `new file`,
-            isNew: true
+        const newCard: Card = {
+            id: NEW_CARD_ID,
+            type: 'new',
+            name: `add track(s)`
         };
         setCards(prevCards => [
             ...prevCards,
@@ -68,13 +95,13 @@ export const FileManager = () => {
         });
     }
 
-    const onNewFile = async (file: File): Promise<Track | undefined> => {
+    const onNewFile = async (file: File, idFrom: number): Promise<Track | undefined> => {
         if (!db) {
             throw new Error('No database');
         }
 
         try {
-            const id = await db.getNextTrackId();
+            const id = await db.getNextTrackId(idFrom);
 
             const ctx = new AudioContext();
             const audioBuffer = await file.arrayBuffer();
@@ -97,32 +124,121 @@ export const FileManager = () => {
     };
 
     const onDrop = async (card: Card | DataTransfer) => {
+        const newFolders = new Map<string, Track[]>();
+        const newTracks: Track[] = [];
+
+        let idFrom = 0;
         if (isDataTransfer(card)) {
             const files = await getFiles(card);
-            for (const file of files) {
-                const track = await onNewFile(file);
-                const newCards = [...cards];
-                const newCard = newCards.find(card => card.isNew);
-                if (!newCard) {
-                    throw new Error('No new card');
+            for (const { file, folder } of files) {
+                const track = await onNewFile(file, idFrom);
+                if (track) {
+                    idFrom = track.id;
+                    if (folder) {
+                        newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
+                    } else {
+                        newTracks.push(track);
+                    }
                 }
+            }
+        } else {
+            newTracks.push(cardToTrack(card));
+        }
 
-                newCard.id = track?.id.toString() || 'unknown';
-                newCard.text = track?.name || 'unknown';
-                newCard.isNew = false;
-                setCards(newCards);
+        const folders: Folder[] = [];
+
+        let currentFolder: Folder | undefined;
+        let nextFolders: Folder[] = [];
+        for (const card of cards) {
+            switch (card.type) {
+                case 'folder': {
+                    if (currentFolder) {
+                        folders.push(currentFolder);
+                    }
+                    if (nextFolders) {
+                        folders.push(...nextFolders);
+                        nextFolders = [];
+                    }
+                    currentFolder = newFolder(card.name);
+                    break;
+                }
+                case 'track': {
+                    if (currentFolder) {
+                        currentFolder.tracks.push(cardToTrack(card));
+                    }
+                    break;
+                }
+                case 'new': {
+                    if (currentFolder) {
+                        currentFolder.tracks.push(...newTracks);
+                    }
+                    if (newFolders.size > 0) {
+                        nextFolders = [...newFolders.keys()].map(name => newFolder(name, newFolders.get(name)));
+                    }
+                    break;
+                }
             }
         }
+
+        if (currentFolder) {
+            folders.push(currentFolder);
+        }
+        if (nextFolders) {
+            folders.push(...nextFolders);
+        }
+
+        updateFolders(folders);
+    };
+
+    const onDelete = async (remove: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        if (remove.type === 'track') {
+            await db.deleteFile(remove.id);
+        }
+
+        const folders: Folder[] = [];
+        let currentFolder: Folder | undefined;
+        for (const card of cards) {
+            if (card.id === remove.id) {
+                continue;
+            }
+
+            switch (card.type) {
+                case 'folder': {
+                    if (currentFolder) {
+                        folders.push(currentFolder);
+                    }
+                    currentFolder = newFolder(card.name);
+                    break;
+                }
+                case 'track': {
+                    if (currentFolder) {
+                        currentFolder.tracks.push(cardToTrack(card));
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (currentFolder) {
+            folders.push(currentFolder);
+        }
+
+        updateFolders(folders);
     };
 
     const cardNodes = cards.map(card =>
         <File
             key={card.id}
             id={card}
-            text={card.text}
-            isNew={card.isNew}
+            text={card.name}
+            type={card.type}
             onMove={onMove}
             onDrop={onDrop}
+            onDelete={onDelete}
         />
     );
 

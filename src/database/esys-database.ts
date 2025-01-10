@@ -27,7 +27,7 @@ export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boo
 };
 
 const roundUp = (input: number, multiple = 8): number => input % multiple ? input + (multiple * 2) - (input % multiple) : input;
-const fileName = (id: number) => `MP${id.toString(16).padStart(4, '0')}.DAT`;
+const fileName = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
 const fatTime = (date = new Date()): number => 
     ((date.getFullYear() - 80) << 25) | 
     ((date.getMonth() + 1) << 21) |
@@ -144,11 +144,17 @@ export class EsysDatabase implements Database {
         return false;
     }
 
-    public async getTrackId(): Promise<number> {
+    public async getNextTrackId(): Promise<number> {
+        const ids = new Set<number>();
+
         for (let i = 0; i < this.trackCount; i++) {
-            const idOffset = this.fileOffset + (i * 2);
-            const id = this.view.getUint16(idOffset);
-            if (id !== i) {
+            const offset = this.fileOffset + (i * 2);
+            const id = this.view.getUint16(offset);
+            ids.add(id);
+        }
+
+        for (let i = 1; i <= this.trackCount; i++) {
+            if (!ids.has(i)) {
                 return i;
             }
         }

@@ -1,4 +1,4 @@
-export const Header = () =>{
+export const Warning = () =>{
     const invalidBrowser = typeof showDirectoryPicker === 'undefined' || typeof AudioContext === 'undefined';
 
     return (

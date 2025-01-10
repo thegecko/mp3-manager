@@ -10,24 +10,18 @@ const style = {
 	textAlign: 'center',
 }
 
-export interface TargetBoxProps {
+export interface FileContainerProps {
     onNew: () => any
-	onDrop: (item: { files: any[] }) => void
 }
 
-export const FileManager = (props: PropsWithChildren<TargetBoxProps>) => {
-	const { onDrop } = props
+export const FileContainer = (props: PropsWithChildren<FileContainerProps>) => {
+	const { onNew } = props;
 	const [, drop] = useDrop(
 		() => ({
 			accept: [NativeTypes.FILE],
-			drop(item: { files: any[] }) {
-				if (onDrop) {
-                    onDrop(item)
-				}
-			},
             hover(item: any, monitor) {
                 if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
-					item.id = props.onNew()
+					item.id = onNew()
                 }
             }
 		}),

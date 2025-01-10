@@ -1,4 +1,5 @@
-import { memo, useMemo, useRef } from 'preact/compat'
+import { useMemo, useRef } from 'preact/hooks'
+import { memo } from 'preact/compat'
 import { useDrag, useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
 
@@ -9,8 +10,8 @@ const ItemTypes = {
 const style = {
 	cursor: 'move',
 	textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
+	whiteSpace: 'nowrap',
+	overflow: 'hidden',
 	padding: '0.1rem',
 	margin: '.2rem',
 	border: '1px solid gray',
@@ -22,13 +23,16 @@ export interface FileProps {
 	text: string;
 	isNew?: boolean;
 	onMove: (dragRef: any, hoverRef: any) => void;
+	onDrop: (item: any) => void
 }
 
 export const File = memo((props: FileProps) => {
 	const ref = useRef(null)
+	const { id, text, isNew, onMove, onDrop } = props
+
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
 		type: ItemTypes.FILE,
-		item: { id: props.id },
+		item: { id },
 		collect: (monitor) => {
 			const result = {
 				handlerId: monitor.getHandlerId(),
@@ -41,19 +45,22 @@ export const File = memo((props: FileProps) => {
 	const [, connectDrop] = useDrop({
 		accept: [ItemTypes.FILE, NativeTypes.FILE],
 		hover({ id: dragId }: { id: any; type: string }) {
-			if (dragId && props.id && dragId !== props.id) {
-				props.onMove(dragId, props.id)
+			if (dragId && id && dragId !== id) {
+				onMove(dragId, id)
 			}
 		},
+		drop(item: any) {
+			onDrop(item)
+		}
 	})
 
 	connectDrag(ref)
 	connectDrop(ref)
-	const opacity = (isDragging || props.isNew) ? 0.2 : 1
+	const opacity = (isDragging || isNew) ? 0.2 : 1
 	const containerStyle = useMemo(() => ({ ...style, opacity }), [opacity])
 	return (
 		<div ref={ref} style={containerStyle} data-handler-id={handlerId}>
-			{props.text}
+			{text}
 		</div>
 	)
 });

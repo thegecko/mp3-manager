@@ -95,13 +95,13 @@ export const FileManager = () => {
         });
     }
 
-    const onNewFile = async (file: File, idFrom: number): Promise<Track | undefined> => {
+    const onNewFile = async (file: File): Promise<Track | undefined> => {
         if (!db) {
             throw new Error('No database');
         }
 
         try {
-            const id = await db.getNextTrackId(idFrom);
+            const id = await db.getNextTrackId();
 
             const ctx = new AudioContext();
             const audioBuffer = await file.arrayBuffer();
@@ -127,13 +127,11 @@ export const FileManager = () => {
         const newFolders = new Map<string, Track[]>();
         const newTracks: Track[] = [];
 
-        let idFrom = 0;
         if (isDataTransfer(card)) {
             const files = await getFiles(card);
             for (const { file, folder } of files) {
-                const track = await onNewFile(file, idFrom);
+                const track = await onNewFile(file);
                 if (track) {
-                    idFrom = track.id;
                     if (folder) {
                         newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
                     } else {

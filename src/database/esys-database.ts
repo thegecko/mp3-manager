@@ -59,6 +59,7 @@ export class EsysDatabase implements Database {
     protected trackCount: number;
     protected fileOffset: number;
     protected trackOffset: number;
+    protected trackIds: Set<number> | undefined;
 
     protected constructor(
         protected rootFolder: FileSystemDirectoryHandle,
@@ -143,22 +144,30 @@ export class EsysDatabase implements Database {
         return false;
     }
 
-    public async getNextTrackId(idFrom = 0): Promise<number> {
-        const ids = new Set<number>();
-
-        for (let i = 0; i < this.trackCount; i++) {
-            const offset = this.fileOffset + (i * 2);
-            const id = this.view.getUint16(offset);
-            ids.add(id);
+    public async getNextTrackId(): Promise<number> {
+        if (this.trackIds === undefined) {
+            this.trackIds = new Set<number>();
+            for (let i = 0; i < this.trackCount; i++) {
+                const offset = this.fileOffset + (i * 2);
+                const id = this.view.getUint16(offset);
+                this.trackIds.add(id);
+            }            
         }
 
-        for (let i = idFrom + 1; i <= this.trackCount; i++) {
-            if (!ids.has(i)) {
-                return i;
+        let id: number | undefined;
+        for (let i = 1; i <= this.trackCount; i++) {
+            if (!this.trackIds.has(i)) {
+                id = i;
+                break;
             }
         }
 
-        return this.trackCount + 1;
+        if (id === undefined) {
+            id = this.trackCount + 1;
+        }
+
+        this.trackIds.add(id);
+        return id;
     }
 
     public async readFile(id: number): Promise<ArrayBuffer | undefined> {

@@ -23,8 +23,9 @@ https://github.com/georgewoodall82/jsymphonic
 
 ### Folders
 
+- [ ] Add (needs refresh)
 - [ ] Reorder (need to move tracks)
 - [x] Rename
 - [ ] Upload (need to encode)
-- [ ] Delete (need to delete tracks)
+- [x] Delete
 - [ ] Download (jszip would add ~100kb)

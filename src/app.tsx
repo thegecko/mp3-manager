@@ -1,7 +1,8 @@
+import { ContextProvider } from './context';
 import { FileManager } from './manager/file-manager';
 import { Warning } from './warning';
 import { DriveSelect } from './drive-select';
-import { ContextProvider } from './context';
+import { AddFolder } from './add-folder';
 
 const mainStyle = {
     height: '100vh',
@@ -24,6 +25,7 @@ export const App = () => {
                 <FileManager />
                 <div style={footerStyle}>
                     <DriveSelect />
+                    <AddFolder />
                 </div>
             </div>
         </ContextProvider>

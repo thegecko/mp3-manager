@@ -199,20 +199,31 @@ export const FileManager = () => {
 
         const folders: Folder[] = [];
         let currentFolder: Folder | undefined;
+        let deletingTracks = false;
         for (const card of cards) {
-            if (card.id === remove.id) {
-                continue;
-            }
-
             switch (card.type) {
                 case 'folder': {
+                    deletingTracks = false;
                     if (currentFolder) {
                         folders.push(currentFolder);
                     }
+                    if (card.id === remove.id) {
+                        deletingTracks = true;
+                        continue;
+                    }
+
                     currentFolder = newFolder(card.name);
                     break;
                 }
                 case 'track': {
+                    if (deletingTracks) {
+                        await db.deleteFile(card.id);
+                        continue;
+                    }
+                    if (card.id === remove.id) {
+                        continue;
+                    }
+        
                     if (currentFolder) {
                         currentFolder.tracks.push(cardToTrack(card));
                     }

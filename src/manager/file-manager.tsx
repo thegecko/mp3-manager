@@ -228,6 +228,56 @@ export const FileManager = () => {
         updateFolders(folders);
     };
 
+    const onRename = async (toRename: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        const name = prompt('Enter new name', toRename.name);
+        if (!name || name === toRename.name) {
+            return;
+        }
+
+        const folders: Folder[] = [];
+        let currentFolder: Folder | undefined;
+        for (const card of cards) {
+            switch (card.type) {
+                case 'folder': {
+                    if (currentFolder) {
+                        folders.push(currentFolder);
+                    }
+                    const folderName = card.id === toRename.id ? name : card.name;
+                    currentFolder = newFolder(folderName);
+                    break;
+                }
+                case 'track': {
+                    if (currentFolder) {
+                        const track = cardToTrack(card);
+                        if (track.id === toRename.id) {
+                            track.name = name;
+                        }
+                        currentFolder.tracks.push(track);
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (currentFolder) {
+            folders.push(currentFolder);
+        }
+
+        updateFolders(folders);
+    };
+
+    const onDownload = async (track: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        // ToDO
+    };
+
     const cardNodes = cards.map(card =>
         <File
             key={card.id}
@@ -237,6 +287,8 @@ export const FileManager = () => {
             onMove={onMove}
             onDrop={onDrop}
             onDelete={onDelete}
+            onRename={onRename}
+            onDownload={onDownload}
         />
     );
 

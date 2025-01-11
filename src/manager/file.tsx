@@ -25,11 +25,13 @@ export interface FileProps {
 	onMove: (dragRef: any, hoverRef: any) => void;
 	onDrop: (item: any) => void
 	onDelete: (id: any) => void
+	onRename: (id: any) => void
+	onDownload: (id: any) => void
 }
 
 export const File = memo((props: FileProps) => {
 	const ref = useRef(null)
-	const { id, type, text, onMove, onDrop, onDelete } = props
+	const { id, type, text, onMove, onDrop, onDelete, onRename, onDownload } = props
 
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
 		type: ItemTypes.FILE,
@@ -66,9 +68,19 @@ export const File = memo((props: FileProps) => {
 				{text}
 			</span>
 			<button
-				class="bg-blue-500 hover:bg-blue-400 rounded-md text-white px-2 py-1 m-2 justify-end"
+				style={{transform: `scale(-1, 1)`}}
+				onClick={() => onRename(id)}>
+				✏️
+			</button>
+			{type === 'track' &&
+				<button
+					onClick={() => onDownload(id)}>
+					⬇
+				</button>
+			}
+			<button
 				onClick={() => onDelete(id)}>
-				Delete
+				🗑
 			</button>
 		</div>
 	)

@@ -16,15 +16,15 @@ https://github.com/georgewoodall82/jsymphonic
 ### Tracks
 
 - [x] Reorder
-- [ ] Rename
+- [x] Rename
 - [ ] Upload (need to encode)
 - [x] Delete
-- [ ] Download
+- [ ] Download (need to decode)
 
 ### Folders
 
-- [ ] Reorder (ned to move tracks)
-- [ ] Rename
+- [ ] Reorder (need to move tracks)
+- [x] Rename
 - [ ] Upload (need to encode)
 - [ ] Delete (need to delete tracks)
-- [ ] Download
+- [ ] Download (jszip would add ~100kb)

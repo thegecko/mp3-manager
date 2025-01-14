@@ -201,6 +201,7 @@ export const FileManager = () => {
         if (remove.type === 'track') {
             await db.deleteFile(remove.id);
         }
+
         const folders: Folder[] = [];
         let currentFolder: Folder | undefined;
         let deletingTracks = false;
@@ -210,6 +211,7 @@ export const FileManager = () => {
                     deletingTracks = false;
                     if (currentFolder) {
                         folders.push(currentFolder);
+                        currentFolder = undefined;
                     }
                     if (card.id === remove.id) {
                         deletingTracks = true;

@@ -18,9 +18,14 @@ interface Card {
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
 const folderToCard = (folder: Folder): Card => ({
-    id: folder.offset,
+    id: folder.id,
     type: 'folder',
     name: folder.name
+});
+const cardToFolder = (card: Card): Folder => ({
+    id: card.id,
+    name: card.name,
+    tracks: []
 });
 const trackToCard = (track: Track): Card => ({
     id: track.id,
@@ -37,7 +42,7 @@ const cardToTrack = (card: Card): Track => ({
 });
 const newFolder = (name: string, tracks: Track[] = []): Folder => ({
     name,
-    offset: -1,
+    id: -1,
     tracks
 });
 
@@ -157,7 +162,7 @@ export const FileManager = () => {
                         folders.push(...nextFolders);
                         nextFolders = [];
                     }
-                    currentFolder = newFolder(card.name);
+                    currentFolder = cardToFolder(card);
                     break;
                 }
                 case 'track': {
@@ -196,7 +201,6 @@ export const FileManager = () => {
         if (remove.type === 'track') {
             await db.deleteFile(remove.id);
         }
-
         const folders: Folder[] = [];
         let currentFolder: Folder | undefined;
         let deletingTracks = false;
@@ -212,7 +216,7 @@ export const FileManager = () => {
                         continue;
                     }
 
-                    currentFolder = newFolder(card.name);
+                    currentFolder = cardToFolder(card);
                     break;
                 }
                 case 'track': {
@@ -235,7 +239,6 @@ export const FileManager = () => {
         if (currentFolder) {
             folders.push(currentFolder);
         }
-
         updateFolders(folders);
     };
 
@@ -257,8 +260,10 @@ export const FileManager = () => {
                     if (currentFolder) {
                         folders.push(currentFolder);
                     }
-                    const folderName = card.id === toRename.id ? name : card.name;
-                    currentFolder = newFolder(folderName);
+                    currentFolder = cardToFolder({
+                        ...card,
+                        name: card.id === toRename.id ? name : card.name
+                    });
                     break;
                 }
                 case 'track': {

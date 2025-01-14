@@ -9,7 +9,7 @@ export const AddFolder = () => {
             return;
         }
 
-        folders.unshift({ offset: -1, name, tracks: [] });
+        folders.unshift({ id: -1, name, tracks: [] });
         updateFolders(folders);
     };
 

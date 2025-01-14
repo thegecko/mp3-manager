@@ -96,7 +96,7 @@ export class EsysDatabase implements Database {
                     console.error(e);
                 }
             }
-            folders.unshift({ name, offset, tracks });
+            folders.unshift({ name, id: -1-i, tracks });
         }
 
         return folders;

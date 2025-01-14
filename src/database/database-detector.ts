@@ -11,7 +11,7 @@ export interface Database {
 }
 
 export interface Folder {
-    offset: number;
+    id: number;
     name: string;
     tracks: Track[];
 }

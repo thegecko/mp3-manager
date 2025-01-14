@@ -1,21 +1,16 @@
-import { useDb } from './context';
+import { useFolders } from './context';
 
 export const AddFolder = () => {
-    const { db } = useDb();
+    const { folders, updateFolders } = useFolders();
 
-    const onClick = async () => {
-        if (!db) {
-            throw new Error('No database');
-        }
-
+    const onClick = () => {
         const name = prompt('Enter the name of the folder', 'New Folder');
         if (!name) {
             return;
         }
 
-        const folders = await db.getFolders();
-        folders.unshift({ offset: 0, name, tracks: [] });
-        await db.setFolders(folders);
+        folders.unshift({ offset: -1, name, tracks: [] });
+        updateFolders(folders);
     };
 
     return (

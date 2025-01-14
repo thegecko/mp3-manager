@@ -12,7 +12,8 @@ const ROOT_FOLDER = 'ESYS';
 const DATA_FOLDER = 'NW-MP3';
 const DB_FILE = 'PBLIST1.DAT';
 const BACKUP_FILE = 'PBLIST0.DAT';
-const HEADER_TEXT = 'WMPLESYS';
+const DB_HEADER_TEXT = 'WMPLESYS';
+const TRACK_HEADER_TEXT = 'WMMP';
 
 export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boolean> => {
     // Check for ESYS folder
@@ -26,7 +27,7 @@ export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boo
     return true;
 };
 
-const roundUp = (input: number, multiple = 8): number => input % multiple ? input + (multiple * 2) - (input % multiple) : input;
+const roundUp = (input: number, multiple = 8) => Math.ceil(input/multiple)*multiple;
 const fileName = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
 const fatTime = (date = new Date()): number => 
     ((date.getFullYear() - 80) << 25) | 
@@ -74,7 +75,7 @@ export class EsysDatabase implements Database {
         this.folderCount = this.view.getUint32(20);
         this.trackCount = this.view.getUint32(24);
         this.fileOffset = 32 + (this.folderCount * 256);
-        this.trackOffset = 32 + (this.folderCount * 256) + roundUp(this.trackCount * 2);
+        this.trackOffset = this.fileOffset + roundUp(this.trackCount * 2);
     }
 
     public async getFolders(): Promise<Folder[]> {
@@ -85,15 +86,17 @@ export class EsysDatabase implements Database {
             const start = 32 + (i * 256);
             const name = this.getText(start, 252);
             const offset = this.view.getUint32(start + 252);
-            const from = (offset - (32 + (this.folderCount * 256))) / 2;
             let tracks: Track[] = [];
-            try {
-                tracks = await this.getTracks(from, lastOffset);
-            } catch (e) {
-                console.error(e);
+            if (offset > 0) {
+                try {
+                    const from = (offset - (32 + (this.folderCount * 256))) / 2;
+                    tracks = await this.getTracks(from, lastOffset);
+                    lastOffset = from;
+                } catch (e) {
+                    console.error(e);
+                }
             }
             folders.unshift({ name, offset, tracks });
-            lastOffset = from;
         }
 
         return folders;
@@ -110,7 +113,7 @@ export class EsysDatabase implements Database {
             const tracks = folders.reduce((acc, folder) => [...acc, ...folder.tracks], [] as Track[]);
             this.trackCount = tracks.length;
             this.fileOffset = 32 + (this.folderCount * 256);
-            this.trackOffset = 32 + (this.folderCount * 256) + roundUp(this.trackCount * 2);
+            this.trackOffset = this.fileOffset + roundUp(this.trackCount * 2);
             const length = this.trackOffset + (this.trackCount * 768);
             const buffer = new ArrayBuffer(length);
             this.view = new DataView(buffer);
@@ -125,8 +128,12 @@ export class EsysDatabase implements Database {
                 const folder = folders[i];
                 const start = 32 + (i * 256);
                 this.setText(start, folder.name);
-                this.view.setUint32(start + 252, offset);
-                offset += folder.tracks.length * 2;
+                if (folder.tracks.length === 0) {
+                    this.view.setUint32(start + 252, 0);
+                } else {
+                    this.view.setUint32(start + 252, offset);
+                    offset += folder.tracks.length * 2;
+                }
             }
 
             // Tracks
@@ -183,7 +190,7 @@ export class EsysDatabase implements Database {
 
     public async writeFile(id: number, data: ArrayBuffer, duration: number, frames: number): Promise<boolean> {
         try {
-            const encoded = this.encodeFile(data, duration, frames);
+            const encoded = this.encodeFile(id, data, duration, frames);
             const fileHandle = await this.dataFolder.getFileHandle(fileName(id), { create: true });
             await this.writeFileHandle(fileHandle, encoded);
             return true;
@@ -221,7 +228,7 @@ export class EsysDatabase implements Database {
     protected checkHeader(): void {
         const buffer = this.view.buffer.slice(0, 8);
         const text = new TextDecoder().decode(buffer);
-        if (text !== HEADER_TEXT) {
+        if (text !== DB_HEADER_TEXT) {
             throw new Error('Invalid db file');
         }
 
@@ -238,7 +245,7 @@ export class EsysDatabase implements Database {
 
     protected createHeader(): void {
         // WMPLESYS
-        const text = new TextEncoder().encode(HEADER_TEXT);
+        const text = new TextEncoder().encode(DB_HEADER_TEXT);
         new Uint8Array(this.view.buffer).set(text, 0)
 
         this.view.setUint32(8, this.timestamp);
@@ -303,7 +310,37 @@ export class EsysDatabase implements Database {
         }
     }
 
-    protected encodeFile(buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
+    protected encodeFile(id: number, buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
+        // Remove all id3 frames
+        const stripped = this.stripId3(buffer);
+        const encoded = new Uint8Array(32 + stripped.byteLength);
+        const view = new DataView(encoded.buffer);
+
+        // Header
+        // 4 bytes - WMMP
+        const text = new TextEncoder().encode(TRACK_HEADER_TEXT);
+        encoded.set(text, 0);
+
+        // 4 byte longword - total file size (bytes)
+        view.setUint32(4, stripped.byteLength);
+        // 4 byte longword - duration (ms)
+        view.setUint32(8, duration);
+        // 4 byte longword - frame count
+        view.setUint32(12, frames);
+        // 16 bytes - serial number + 0x01 and then padded with 0x00
+        view.setUint32(16, this.serialNumber);
+        view.setUint8(20, 1);
+        view.setUint8(21, 0);
+        view.setUint16(22, 0);
+        view.setUint32(24, 0);
+        view.setUint32(28, 0);
+
+        // Encode
+        // TODO
+        return stripped; // encoded.buffer;
+    }
+
+    protected stripId3(buffer: ArrayBuffer): ArrayBuffer {
         // TODO
         return buffer;
     }

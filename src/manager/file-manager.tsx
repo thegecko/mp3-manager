@@ -46,7 +46,7 @@ const NEW_CARD_ID = -99;
 export const FileManager = () => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
-    const [cards, setCards] = useState([] as Card[]);
+    const [ cards, setCards ] = useState([] as Card[]);
 
     useMemo(() => {
         const cards: Card[] = [];

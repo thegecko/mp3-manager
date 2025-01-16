@@ -17,7 +17,6 @@ interface Card {
 }
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
-const cleanCards = (cards: Card[]): Card[] => cards.filter(card => card.type !== 'new');
 const folderToCard = (folder: Folder): Card => ({
     id: folder.id,
     type: 'folder',
@@ -72,11 +71,20 @@ export const FileManager = () => {
             name: `add track(s)`
         };
         setCards(prevCards => [
-            ...cleanCards(prevCards),
+            ...prevCards,
             newCard
         ]);
         return newCard;
     }, [cards])
+
+    const clearNew = () => {
+        const hasNew = cards.some(card => card.type === 'new');
+        if (hasNew) {
+            setCards(prevCards => [
+                ...prevCards.filter(card => card.type !== 'new')
+            ]);
+        }
+    };
 
     let requestedFrame: number | undefined;
     const onMove = (dragRef: Card, hoverRef: Card): void => {
@@ -313,7 +321,7 @@ export const FileManager = () => {
 
     return (
         <DndProvider backend={HTML5Backend}>
-            <FileContainer onNew={onNew}>
+            <FileContainer onNew={onNew} clearNew={clearNew}>
                 {cardNodes}
             </FileContainer>
         </DndProvider>

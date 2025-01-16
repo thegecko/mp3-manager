@@ -36,13 +36,10 @@ export const File = memo((props: FileProps) => {
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
 		type: ItemTypes.FILE,
 		item: { id },
-		collect: (monitor) => {
-			const result = {
-				handlerId: monitor.getHandlerId(),
-				isDragging: monitor.isDragging(),
-			}
-			return result
-		},
+		collect: (monitor) => ({
+			handlerId: monitor.getHandlerId(),
+			isDragging: monitor.isDragging(),
+		})
 	});
 
 	const [, connectDrop] = useDrop({

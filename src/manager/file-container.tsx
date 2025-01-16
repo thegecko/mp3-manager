@@ -13,17 +13,23 @@ const style = {
 
 export interface FileContainerProps {
     onNew: () => any
+    clearNew: () => void
 }
 
 export const FileContainer = (props: PropsWithChildren<FileContainerProps>) => {
-	const { onNew } = props;
+	const { onNew, clearNew } = props;
 	const ref = useRef(null)
 
 	const [, connectDrop] = useDrop(() => ({
 		accept: NativeTypes.FILE,
 		hover(item: any, monitor) {
 			if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
-				item.id = onNew()
+				item.id = onNew();
+			}
+		},
+		collect: (monitor) => {
+			if (!monitor.getItemType()) {
+				clearNew();
 			}
 		}
 	}), [props]);

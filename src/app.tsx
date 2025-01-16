@@ -14,7 +14,7 @@ const footerStyle = {
     height: '50px',
     display: 'flex',
     alignItems: 'center',
-    background: 'lightblue',
+    background: 'lightgray',
 }
 
 export const App = () => {

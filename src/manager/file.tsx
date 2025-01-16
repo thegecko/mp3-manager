@@ -8,14 +8,11 @@ const ItemTypes = {
 }
 
 const style = {
+	display: 'flex',
 	cursor: 'move',
-	textOverflow: 'ellipsis',
-	whiteSpace: 'nowrap',
-	overflow: 'hidden',
 	padding: '0.1rem',
 	margin: '.2rem',
-	border: '1px solid gray',
-	background: 'white',
+	border: '1px solid gray'
 }
 
 export interface FileProps {
@@ -56,29 +53,34 @@ export const File = memo((props: FileProps) => {
 
 	connectDrag(ref);
 	connectDrop(ref);
+	const background = type === 'folder' ? 'lightblue' : 'white'
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1
 
 	return (
-		<div ref={ref} style={{...style, opacity}} data-handler-id={handlerId}>
-			<span style={{ fontWeight }}>
-				{text}
-			</span>
-			<button
-				style={{transform: `scale(-1, 1)`}}
-				onClick={() => onRename(id)}>
-				✏️
-			</button>
-			{type === 'track' &&
+		<div ref={ref} style={{...style, background, opacity}} data-handler-id={handlerId}>
+			<span style={{flex: 1, textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
 				<button
-					onClick={() => onDownload(id)}>
-					⬇
+					style={{transform: `scale(-1, 1)`}}
+					onClick={() => onRename(id)}>
+					✏️
 				</button>
-			}
-			<button
-				onClick={() => onDelete(id)}>
-				🗑
-			</button>
+				<span style={{ fontWeight }}>
+					{text}
+				</span>
+			</span>
+			<span style={{marginLeft: 'auto;'}}>
+				{type === 'track' &&
+					<button
+						onClick={() => onDownload(id)}>
+						⬇
+					</button>
+				}
+				<button
+					onClick={() => onDelete(id)}>
+					🗑
+				</button>
+			</span>
 		</div>
 	);
 });

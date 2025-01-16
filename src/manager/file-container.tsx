@@ -7,8 +7,7 @@ import { NativeTypes } from 'react-dnd-html5-backend'
 const style = {
 	flex: 1,
     overflow: 'auto',
-	padding: '1rem',
-	textAlign: 'center',
+	padding: '1rem'
 }
 
 export interface FileContainerProps {

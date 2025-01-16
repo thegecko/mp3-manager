@@ -60,11 +60,13 @@ export const File = memo((props: FileProps) => {
 	return (
 		<div ref={ref} style={{...style, background, opacity}} data-handler-id={handlerId}>
 			<span style={{flex: 1, textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-				<button
-					style={{transform: `scale(-1, 1)`}}
-					onClick={() => onRename(id)}>
-					✏️
-				</button>
+				{type !== 'new' &&
+					<button
+						style={{transform: `scale(-1, 1)`}}
+						onClick={() => onRename(id)}>
+						✏️
+					</button>
+				}
 				<span style={{ fontWeight }}>
 					{text}
 				</span>
@@ -76,10 +78,12 @@ export const File = memo((props: FileProps) => {
 						⬇
 					</button>
 				}
-				<button
-					onClick={() => onDelete(id)}>
-					🗑
-				</button>
+				{type !== 'new' &&
+					<button
+						onClick={() => onDelete(id)}>
+						🗑
+					</button>
+				}
 			</span>
 		</div>
 	);

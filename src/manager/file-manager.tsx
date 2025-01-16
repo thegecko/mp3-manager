@@ -17,6 +17,7 @@ interface Card {
 }
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
+const cleanCards = (cards: Card[]): Card[] => cards.filter(card => card.type !== 'new');
 const folderToCard = (folder: Folder): Card => ({
     id: folder.id,
     type: 'folder',
@@ -71,7 +72,7 @@ export const FileManager = () => {
             name: `add track(s)`
         };
         setCards(prevCards => [
-            ...prevCards,
+            ...cleanCards(prevCards),
             newCard
         ]);
         return newCard;

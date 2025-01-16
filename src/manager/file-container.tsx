@@ -1,3 +1,4 @@
+import { useRef } from 'preact/hooks'
 import type { ComponentChild } from 'preact'
 import type { PropsWithChildren } from 'preact/compat'
 import { useDrop } from 'react-dnd'
@@ -16,23 +17,24 @@ export interface FileContainerProps {
 
 export const FileContainer = (props: PropsWithChildren<FileContainerProps>) => {
 	const { onNew } = props;
-	const [, drop] = useDrop(
-		() => ({
-			accept: [NativeTypes.FILE],
-            hover(item: any, monitor) {
-                if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
-					item.id = onNew()
-                }
-            }
-		}),
-		[props],
-	)
+	const ref = useRef(null)
 
+	const [, connectDrop] = useDrop(() => ({
+		accept: NativeTypes.FILE,
+		hover(item: any, monitor) {
+			if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
+				item.id = onNew()
+			}
+		}
+	}), [props]);
+
+	connectDrop(ref);
 	const hasFiles = (props.children as ComponentChild[]).length > 0;
+
 	return (
-		<div ref={drop} style={style}>
+		<div ref={ref} style={style}>
 			{hasFiles ? undefined : 'Drag Files Here'}
             {props.children}
 		</div>
-	)
+	);
 }

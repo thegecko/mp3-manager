@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'preact/hooks'
+import { useRef } from 'preact/hooks'
 import { memo } from 'preact/compat'
 import { useDrag, useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
@@ -30,8 +30,8 @@ export interface FileProps {
 }
 
 export const File = memo((props: FileProps) => {
-	const ref = useRef(null)
 	const { id, type, text, onMove, onDrop, onDelete, onRename, onDownload } = props
+	const ref = useRef(null)
 
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
 		type: ItemTypes.FILE,
@@ -43,7 +43,7 @@ export const File = memo((props: FileProps) => {
 			}
 			return result
 		},
-	})
+	});
 
 	const [, connectDrop] = useDrop({
 		accept: [ItemTypes.FILE, NativeTypes.FILE],
@@ -57,8 +57,8 @@ export const File = memo((props: FileProps) => {
 		}
 	})
 
-	connectDrag(ref)
-	connectDrop(ref)
+	connectDrag(ref);
+	connectDrop(ref);
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1
 
@@ -83,5 +83,5 @@ export const File = memo((props: FileProps) => {
 				🗑
 			</button>
 		</div>
-	)
+	);
 });

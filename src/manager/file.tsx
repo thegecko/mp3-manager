@@ -55,11 +55,15 @@ export const File = memo((props: FileProps) => {
 	connectDrop(ref);
 	const background = type === 'folder' ? 'lightblue' : 'white'
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
-	const opacity = (isDragging || type === 'new') ? 0.2 : 1
+	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
+	const marginLeft = type === 'track' ? '20px' : '0';
 
 	return (
-		<div ref={ref} style={{...style, background, opacity}} data-handler-id={handlerId}>
+		<div ref={ref} style={{...style, background, opacity, marginLeft }} data-handler-id={handlerId}>	
 			<span style={{flex: 1, textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+				<span style={{ fontWeight }}>
+					{text}
+				</span>
 				{type !== 'new' &&
 					<button
 						style={{transform: `scale(-1, 1)`}}
@@ -67,11 +71,8 @@ export const File = memo((props: FileProps) => {
 						✏️
 					</button>
 				}
-				<span style={{ fontWeight }}>
-					{text}
-				</span>
 			</span>
-			<span style={{marginLeft: 'auto;'}}>
+			<span style={{marginLeft: 'auto', alignContent: 'center'}}>
 				{type === 'track' &&
 					<button
 						onClick={() => onDownload(id)}>

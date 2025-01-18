@@ -1,6 +1,14 @@
 import { detectDatabase } from './database/database-detector';
 import { useDb } from './context';
 
+const style = {
+    color: 'white',
+    background: 'dodgerblue',
+    padding: '0.5rem',
+    margin: '0.5rem',
+    borderRadius: '0.375rem',
+}
+
 export const DriveSelect = () => {
     const { updateDb } = useDb();
 
@@ -17,8 +25,7 @@ export const DriveSelect = () => {
     };
 
     return (
-        <button
-            class="bg-blue-500 hover:bg-blue-400 rounded-md text-white px-2 py-1 m-2"
+        <button style={style}
             onClick={onClick}>
             Select Drive
         </button>

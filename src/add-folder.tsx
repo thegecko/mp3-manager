@@ -1,5 +1,13 @@
 import { useFolders } from './context';
 
+const style = {
+    color: 'white',
+    background: 'dodgerblue',
+    padding: '0.5rem',
+    margin: '0.5rem',
+    borderRadius: '0.375rem',
+}
+
 export const AddFolder = () => {
     const { folders, updateFolders } = useFolders();
 
@@ -14,8 +22,7 @@ export const AddFolder = () => {
     };
 
     return (
-        <button
-            class="bg-blue-500 hover:bg-blue-400 rounded-md text-white px-2 py-1 m-2"
+        <button style={style}
             onClick={onClick}>
             Add Folder
         </button>

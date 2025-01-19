@@ -19,6 +19,8 @@ export interface FileProps {
 	id: any;
 	type: 'folder' | 'track' | 'new';
 	text: string;
+	title?: string;
+	onHover: (dragRef: any) => void;
 	onMove: (dragRef: any, hoverRef: any) => void;
 	onDrop: (item: any) => void
 	onDelete: (id: any) => void
@@ -27,7 +29,7 @@ export interface FileProps {
 }
 
 export const File = memo((props: FileProps) => {
-	const { id, type, text, onMove, onDrop, onDelete, onRename, onDownload } = props
+	const { id, type, text, title, onHover, onMove, onDrop, onDelete, onRename, onDownload } = props
 	const ref = useRef(null)
 
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
@@ -42,14 +44,18 @@ export const File = memo((props: FileProps) => {
 	const [, connectDrop] = useDrop({
 		accept: [ItemTypes.FILE, NativeTypes.FILE],
 		hover({ id: dragId }: { id: any; type: string }) {
+			onHover(dragId);
 			if (dragId && id && dragId !== id) {
-				onMove(dragId, id)
+				// Allow folders to only drag over other folders
+				if (dragId.type !== 'folder' || id.type === 'folder') {
+					onMove(dragId, id)
+				}
 			}
 		},
 		drop(item: any) {
 			onDrop(item)
 		}
-	})
+	});
 
 	connectDrag(ref);
 	connectDrop(ref);
@@ -61,11 +67,14 @@ export const File = memo((props: FileProps) => {
 	return (
 		<div ref={ref} style={{...style, background, opacity, marginLeft }} data-handler-id={handlerId}>	
 			<span style={{flex: 1, textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-				<span style={{ fontWeight }}>
+				<span
+					title={title}
+					style={{ fontWeight }}>
 					{text}
 				</span>
 				{type !== 'new' &&
 					<button
+						title='Rename'
 						style={{transform: `scale(-1, 1)`}}
 						onClick={() => onRename(id)}>
 						✏️
@@ -75,12 +84,14 @@ export const File = memo((props: FileProps) => {
 			<span style={{marginLeft: 'auto', alignContent: 'center'}}>
 				{type === 'track' &&
 					<button
+						title='Downlaod'
 						onClick={() => onDownload(id)}>
 						⬇
 					</button>
 				}
 				{type !== 'new' &&
 					<button
+						title='Delete'
 						onClick={() => onDelete(id)}>
 						🗑
 					</button>

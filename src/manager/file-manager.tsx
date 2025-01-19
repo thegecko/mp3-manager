@@ -2,71 +2,24 @@ import * as id3js from 'id3js'
 import { useCallback, useMemo, useState } from 'preact/hooks';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Folder, Track } from '../database/database-detector';
 import { FileContainer } from './file-container';
 import { useDb, useFolders } from '../context';
 import { File } from './file';
-import { getFiles } from './util';
-
-interface Card {
-    id: number;
-    type: 'folder' | 'track' | 'new';
-    name: string;
-    artist?: string;
-    file?: string;
-}
+import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
+import type { Track } from '../database/database-detector';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
-const folderToCard = (folder: Folder): Card => ({
-    id: folder.id,
-    type: 'folder',
-    name: folder.name
-});
-const cardToFolder = (card: Card): Folder => ({
-    id: card.id,
-    name: card.name,
-    tracks: []
-});
-const trackToCard = (track: Track): Card => ({
-    id: track.id,
-    type: 'track',
-    name: track.name,
-    artist: track.artist,
-    file: track.file
-});
-const cardToTrack = (card: Card): Track => ({
-    id: card.id,
-    name: card.name,
-    artist: card.artist || '',
-    file: card.file || ''
-});
-const newFolder = (name: string, tracks: Track[] = []): Folder => ({
-    name,
-    id: -1,
-    tracks
-});
-
-const NEW_CARD_ID = -99;
 
 export const FileManager = () => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
     const [ cards, setCards ] = useState([] as Card[]);
+    const [ collapsedFolder, setcollapsedFolder ] = useState(undefined as number | undefined);
 
-    useMemo(() => {
-        const cards: Card[] = [];
-        for (const folder of folders) {
-            cards.push(folderToCard(folder));
-            for (const track of folder.tracks) {
-                cards.push(trackToCard(track));
-            }
-        }
-        setCards(cards);
-    }, [folders]);
-
+    // Container handlers
     const onNew = useCallback(() => {
         const newCard: Card = {
-            id: NEW_CARD_ID,
+            id: NEW_ID,
             type: 'new',
             name: `add track(s)`
         };
@@ -86,30 +39,131 @@ export const FileManager = () => {
         }
     };
 
+    // File handlers
+    const onHover = (dragRef: Card): void => {
+        if (dragRef.type === 'folder') {
+            setcollapsedFolder(dragRef.id);
+        }
+    };
+
     let requestedFrame: number | undefined;
+    let dragid: number | undefined;
+    let hoverid: number | undefined;
     const onMove = (dragRef: Card, hoverRef: Card): void => {
-        if (requestedFrame) {
+        if (requestedFrame || dragRef.id === dragid && hoverRef.id === hoverid) {
             return;
         }
 
-        const newCards = [...cards];
+        dragid = dragRef.id;
+        hoverid = hoverRef.id;
+        const removeIndex = cards.indexOf(dragRef)
+        let insertIndex = cards.indexOf(hoverRef)
 
-        const dragIndex = newCards.indexOf(dragRef)
-        const hoverIndex = newCards.indexOf(hoverRef)
-
-        if (dragIndex < 0 || hoverIndex < 0) {
+        if (removeIndex < 0 || insertIndex < 0) {
             return;
         }
-        const deletedCards = newCards.splice(dragIndex, 1);
-        newCards.splice(hoverIndex, 0, ...deletedCards);
+
+        const trackCount = (folderIndex: number) => {
+            let count = 0;
+            for (let i = folderIndex + 1; i < cards.length; i++) {
+                if (cards[i].type === 'folder') {
+                    break;
+                }
+                count++;
+            }
+            return count;
+        }
+
+        let removeCount = 1;
+        if (dragRef.type === 'folder') {
+            const toMove = trackCount(removeIndex); 
+            removeCount = toMove + 1;
+            if (removeIndex < insertIndex) {
+                // Moving down
+                insertIndex += (trackCount(insertIndex) - toMove);
+            }
+        }
 
         requestedFrame = requestAnimationFrame(() => {
-            setCards(newCards);
+            setCards(cards => {
+                const newCards = [...cards];
+                const deletedCards = newCards.splice(removeIndex, removeCount);
+                newCards.splice(insertIndex, 0, ...deletedCards);
+                return newCards;
+            });
             requestedFrame = undefined;
         });
     }
 
-    const onNewFile = async (file: File): Promise<Track | undefined> => {
+    const onDrop = async (card: Card | DataTransfer) => {
+        const newFolders = new Map<string, Track[]>();
+        const newTracks: Track[] = [];
+
+        if (isDataTransfer(card)) {
+            const files = await getFiles(card);
+            for (const { file, folder } of files) {
+                const track = await createFile(file);
+                if (track) {
+                    if (folder) {
+                        newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
+                    } else {
+                        newTracks.push(track);
+                    }
+                }
+            }
+        }
+
+        const folders = buildFolders(cards, { newFolders, newTracks });
+        updateFolders(folders);
+        setcollapsedFolder(undefined);
+    };
+
+    const onDelete = async (toDelete: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        // Delete files
+        let deletingTracks = false;
+        for (const card of cards) {
+            if (card.type === 'folder') {
+                deletingTracks = toDelete.id === card.id;
+            } else if (deletingTracks || toDelete.id === card.id) {
+                await db.deleteFile(card.id);
+            }
+        }
+
+        const folders = buildFolders(cards, { deleteId: toDelete.id });
+        updateFolders(folders);
+    };
+
+    const onRename = async (toRename: Card) => {
+        const name = prompt('Enter new name', toRename.name);
+        if (!name || name === toRename.name) {
+            return;
+        }
+
+        // Rename card
+        const newCards = [...cards];
+        const card = newCards.find(card => card.id === toRename.id);
+        if (card) {
+            card.name = name;
+        }
+    
+        const folders = buildFolders(newCards);
+        updateFolders(folders);
+    };
+
+    const onDownload = async (track: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        // ToDO
+    };
+
+    // Support functions
+    const createFile = async (file: File): Promise<Track | undefined> => {
         if (!db) {
             throw new Error('No database');
         }
@@ -137,180 +191,34 @@ export const FileManager = () => {
         }
     };
 
-    const onDrop = async (card: Card | DataTransfer) => {
-        const newFolders = new Map<string, Track[]>();
-        const newTracks: Track[] = [];
+    // Cards
+    useMemo(() => {
+        const cards = getCards(folders);
+        setCards(cards);
+    }, [folders]);
 
-        if (isDataTransfer(card)) {
-            const files = await getFiles(card);
-            for (const { file, folder } of files) {
-                const track = await onNewFile(file);
-                if (track) {
-                    if (folder) {
-                        newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
-                    } else {
-                        newTracks.push(track);
-                    }
-                }
-            }
-        } else {
-            newTracks.push(cardToTrack(card));
+    const filtered: Card[] = [];
+
+    let ignore = false;
+    for (const card of cards) {
+        if (card.type === 'folder') {
+            filtered.push(card);
+            ignore = !!collapsedFolder && card.id === collapsedFolder;
+        } else if (!ignore) {
+            filtered.push(card);
         }
+    }
 
-        const folders: Folder[] = [];
-
-        let currentFolder: Folder | undefined;
-        let nextFolders: Folder[] = [];
-        for (const card of cards) {
-            switch (card.type) {
-                case 'folder': {
-                    if (currentFolder) {
-                        folders.push(currentFolder);
-                    }
-                    if (nextFolders) {
-                        folders.push(...nextFolders);
-                        nextFolders = [];
-                    }
-                    currentFolder = cardToFolder(card);
-                    break;
-                }
-                case 'track': {
-                    if (currentFolder) {
-                        currentFolder.tracks.push(cardToTrack(card));
-                    }
-                    break;
-                }
-                case 'new': {
-                    if (currentFolder) {
-                        currentFolder.tracks.push(...newTracks);
-                    }
-                    if (newFolders.size > 0) {
-                        nextFolders = [...newFolders.keys()].map(name => newFolder(name, newFolders.get(name)));
-                    }
-                    break;
-                }
-            }
-        }
-
-        if (currentFolder) {
-            folders.push(currentFolder);
-        }
-        if (nextFolders) {
-            folders.push(...nextFolders);
-        }
-
-        updateFolders(folders);
-    };
-
-    const onDelete = async (remove: Card) => {
-        if (!db) {
-            throw new Error('No database');
-        }
-
-        if (remove.type === 'track') {
-            await db.deleteFile(remove.id);
-        }
-
-        const folders: Folder[] = [];
-        let currentFolder: Folder | undefined;
-        let deletingTracks = false;
-        for (const card of cards) {
-            switch (card.type) {
-                case 'folder': {
-                    deletingTracks = false;
-                    if (currentFolder) {
-                        folders.push(currentFolder);
-                        currentFolder = undefined;
-                    }
-                    if (card.id === remove.id) {
-                        deletingTracks = true;
-                        continue;
-                    }
-
-                    currentFolder = cardToFolder(card);
-                    break;
-                }
-                case 'track': {
-                    if (deletingTracks) {
-                        await db.deleteFile(card.id);
-                        continue;
-                    }
-                    if (card.id === remove.id) {
-                        continue;
-                    }
-        
-                    if (currentFolder) {
-                        currentFolder.tracks.push(cardToTrack(card));
-                    }
-                    break;
-                }
-            }
-        }
-
-        if (currentFolder) {
-            folders.push(currentFolder);
-        }
-        updateFolders(folders);
-    };
-
-    const onRename = async (toRename: Card) => {
-        if (!db) {
-            throw new Error('No database');
-        }
-
-        const name = prompt('Enter new name', toRename.name);
-        if (!name || name === toRename.name) {
-            return;
-        }
-
-        const folders: Folder[] = [];
-        let currentFolder: Folder | undefined;
-        for (const card of cards) {
-            switch (card.type) {
-                case 'folder': {
-                    if (currentFolder) {
-                        folders.push(currentFolder);
-                    }
-                    currentFolder = cardToFolder({
-                        ...card,
-                        name: card.id === toRename.id ? name : card.name
-                    });
-                    break;
-                }
-                case 'track': {
-                    if (currentFolder) {
-                        const track = cardToTrack(card);
-                        if (track.id === toRename.id) {
-                            track.name = name;
-                        }
-                        currentFolder.tracks.push(track);
-                    }
-                    break;
-                }
-            }
-        }
-
-        if (currentFolder) {
-            folders.push(currentFolder);
-        }
-
-        updateFolders(folders);
-    };
-
-    const onDownload = async (track: Card) => {
-        if (!db) {
-            throw new Error('No database');
-        }
-
-        // ToDO
-    };
-
-    const cardNodes = cards.map(card =>
+    const cardNodes = filtered
+        //.filter(card => !foldersOnly || card.type !== 'track')
+        .map(card =>
         <File
             key={card.id}
             id={card}
             text={card.name}
+            title={card.artist}
             type={card.type}
+            onHover={onHover}
             onMove={onMove}
             onDrop={onDrop}
             onDelete={onDelete}

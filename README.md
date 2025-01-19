@@ -17,14 +17,14 @@ https://github.com/georgewoodall82/jsymphonic
 
 - [x] Reorder
 - [x] Rename
-- [ ] Upload (need to encode and add folder if none)
+- [ ] Upload (need to encode)
 - [x] Delete
-- [ ] Download (need to decode)
+- [ ] Download (need to decode and add id3 tag)
 
 ### Folders
 
 - [x] Add
-- [ ] Reorder (need to move tracks)
+- [x] Reorder
 - [x] Rename
 - [ ] Upload (need to encode)
 - [x] Delete

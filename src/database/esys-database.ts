@@ -109,6 +109,7 @@ export class EsysDatabase implements Database {
             await this.writeFileHandle(backupFile, this.view.buffer);
 
             // Re-initialise
+            this.trackIds = undefined;
             this.folderCount = folders.length;
             const tracks = folders.reduce((acc, folder) => [...acc, ...folder.tracks], [] as Track[]);
             this.trackCount = tracks.length;
@@ -158,11 +159,11 @@ export class EsysDatabase implements Database {
                 const offset = this.fileOffset + (i * 2);
                 const id = this.view.getUint16(offset);
                 this.trackIds.add(id);
-            }            
+            }
         }
 
         let id: number | undefined;
-        for (let i = 1; i <= this.trackCount; i++) {
+        for (let i = 1; i <= this.trackIds.size; i++) {
             if (!this.trackIds.has(i)) {
                 id = i;
                 break;
@@ -170,7 +171,7 @@ export class EsysDatabase implements Database {
         }
 
         if (id === undefined) {
-            id = this.trackCount + 1;
+            id = this.trackIds.size + 1;
         }
 
         this.trackIds.add(id);

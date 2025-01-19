@@ -20,7 +20,7 @@ export interface FileProps {
 	type: 'folder' | 'track' | 'new';
 	text: string;
 	title?: string;
-	onHover: (dragRef: any) => void;
+	onHover: (dragRef?: any) => void;
 	onMove: (dragRef: any, hoverRef: any) => void;
 	onDrop: (item: any) => void
 	onDelete: (id: any) => void
@@ -38,7 +38,10 @@ export const File = memo((props: FileProps) => {
 		collect: (monitor) => ({
 			handlerId: monitor.getHandlerId(),
 			isDragging: monitor.isDragging(),
-		})
+		}),
+		end() {
+			onHover(undefined);
+		}
 	});
 
 	const [, connectDrop] = useDrop({

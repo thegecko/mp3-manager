@@ -40,10 +40,8 @@ export const FileManager = () => {
     };
 
     // File handlers
-    const onHover = (dragRef: Card): void => {
-        if (dragRef.type === 'folder') {
-            setcollapsedFolder(dragRef.id);
-        }
+    const onHover = (dragRef?: Card): void => {
+        setcollapsedFolder(dragRef?.type === 'folder' ? dragRef.id : undefined);
     };
 
     let requestedFrame: number | undefined;
@@ -115,7 +113,6 @@ export const FileManager = () => {
 
         const folders = buildFolders(cards, { newFolders, newTracks });
         updateFolders(folders);
-        setcollapsedFolder(undefined);
     };
 
     const onDelete = async (toDelete: Card) => {

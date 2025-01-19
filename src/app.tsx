@@ -1,33 +1,23 @@
-import { ContextProvider } from './context';
+import { useDb } from './context';
 import { FileManager } from './manager/file-manager';
 import { Warning } from './warning';
-import { DriveSelect } from './drive-select';
-import { AddFolder } from './add-folder';
+import { Welcome } from './welcome';
 
-const mainStyle = {
+const style = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column'
 }
 
-const footerStyle = {
-    height: '50px',
-    display: 'flex',
-    alignItems: 'center',
-    background: 'lightgray',
-}
-
 export const App = () => {
+    const { db } = useDb();
     return (
-        <ContextProvider>
-            <div style={mainStyle}>
-                <Warning />
-                <FileManager />
-                <div style={footerStyle}>
-                    <DriveSelect />
-                    <AddFolder />
-                </div>
+        <>
+            <Warning />
+            <div style={style}>
+                {!!db && <FileManager />}
+                {!db && <Welcome />}
             </div>
-        </ContextProvider>
+        </>
     );
 };

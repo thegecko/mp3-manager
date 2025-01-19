@@ -5,16 +5,25 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { FileContainer } from './file-container';
 import { useDb, useFolders } from '../context';
 import { File } from './file';
+import { AddFolder } from './add-folder';
 import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
 import type { Track } from '../database/database-detector';
+import { DriveSelect } from '../drive-select';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
+
+const footerStyle = {
+    height: '50px',
+    display: 'flex',
+    alignItems: 'center',
+    background: 'lightgray',
+}
 
 export const FileManager = () => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
-    const [ cards, setCards ] = useState([] as Card[]);
-    const [ collapsedFolder, setcollapsedFolder ] = useState(undefined as number | undefined);
+    const [cards, setCards] = useState([] as Card[]);
+    const [collapsedFolder, setcollapsedFolder] = useState(undefined as number | undefined);
 
     // Container handlers
     const onNew = useCallback(() => {
@@ -74,7 +83,7 @@ export const FileManager = () => {
 
         let removeCount = 1;
         if (dragRef.type === 'folder') {
-            const toMove = trackCount(removeIndex); 
+            const toMove = trackCount(removeIndex);
             removeCount = toMove + 1;
             if (removeIndex < insertIndex) {
                 // Moving down
@@ -146,7 +155,7 @@ export const FileManager = () => {
         if (card) {
             card.name = name;
         }
-    
+
         const folders = buildFolders(newCards);
         updateFolders(folders);
     };
@@ -172,17 +181,17 @@ export const FileManager = () => {
             const audioBuffer = await file.arrayBuffer();
             const audio = await ctx.decodeAudioData(audioBuffer);
             const duration = Math.round(audio.duration * 1000);
-    
+
             const buffer = await file.arrayBuffer();
             await db.writeFile(id, buffer, duration, audio.length);
-    
+
             const id3 = await id3js.fromFile(file);
             return {
                 id,
                 name: id3?.title || 'unknown',
                 file: file.name,
                 artist: id3?.artist || 'unknown'
-            }    
+            }
         } catch (e) {
             console.error(e);
         }
@@ -207,28 +216,33 @@ export const FileManager = () => {
     }
 
     const cardNodes = filtered
-        //.filter(card => !foldersOnly || card.type !== 'track')
         .map(card =>
-        <File
-            key={card.id}
-            id={card}
-            text={card.name}
-            title={card.artist}
-            type={card.type}
-            onHover={onHover}
-            onMove={onMove}
-            onDrop={onDrop}
-            onDelete={onDelete}
-            onRename={onRename}
-            onDownload={onDownload}
-        />
-    );
+            <File
+                key={card.id}
+                id={card}
+                text={card.name}
+                title={card.artist}
+                type={card.type}
+                onHover={onHover}
+                onMove={onMove}
+                onDrop={onDrop}
+                onDelete={onDelete}
+                onRename={onRename}
+                onDownload={onDownload}
+            />
+        );
 
     return (
-        <DndProvider backend={HTML5Backend}>
-            <FileContainer onNew={onNew} clearNew={clearNew}>
-                {cardNodes}
-            </FileContainer>
-        </DndProvider>
+        <>
+            <DndProvider backend={HTML5Backend}>
+                <FileContainer onNew={onNew} clearNew={clearNew}>
+                    {cardNodes}
+                </FileContainer>
+            </DndProvider>
+            <div style={footerStyle}>
+                <DriveSelect />
+                <AddFolder />
+            </div>
+        </>
     );
 };

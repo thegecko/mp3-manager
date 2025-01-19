@@ -1,4 +1,4 @@
-import { useFolders } from './context';
+import { useFolders } from '../context';
 
 const style = {
     color: 'white',

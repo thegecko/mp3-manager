@@ -1,6 +1,9 @@
 const style = {
     background: 'lightcoral',
-    padding: 10
+    border: '1px solid darkred',
+    padding: 10,
+    textAlign: 'center',
+    fontWeight: 'bold'
 }
 
 export const Warning = () =>{
@@ -9,7 +12,7 @@ export const Warning = () =>{
     return (
         !invalidBrowser ? undefined :
         <div style={style}>
-            Use a browser with 'FileSystem API' and 'WebAudio API' available (e.g. Chrome or Edge)
+            ⚠️ Please use a browser with <a href='https://caniuse.com/filesystem'>FileSystem API</a> and <a href='https://caniuse.com/audio-api'>WebAudio API</a> available (e.g. Chrome or Edge)
         </div>
     )
 }

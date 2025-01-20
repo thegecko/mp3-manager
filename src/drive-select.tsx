@@ -1,5 +1,5 @@
 import { detectDatabase } from './database/database-detector';
-import { useDb } from './context';
+import { useDb, useDrive } from './context';
 
 const style = {
     color: 'white',
@@ -11,6 +11,7 @@ const style = {
 
 export const DriveSelect = () => {
     const { updateDb } = useDb();
+    const { updateDrive } = useDrive();
 
     const onClick = async () => {
         const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
@@ -18,6 +19,7 @@ export const DriveSelect = () => {
             try {
                 const database = await detectDatabase(fileSystem);
                 updateDb(database);
+                updateDrive(fileSystem.name);
             } catch (e) {
                 alert(e);
             }

@@ -13,9 +13,15 @@ export const FoldersContext = createContext({
     updateFolders: (folders: Folder[]) => {}
 });
 
+export const DriveContext = createContext({
+    drive: undefined as String | undefined,
+    updateDrive: (drive: string) => {}
+});
+
 export const ContextProvider = (props: PropsWithChildren) => {
     const [db, setDb] = useState(undefined as Database | undefined);
     const [folders, setFolders] = useState([] as Folder[]);
+    const [drive, setDrive] = useState(undefined as String | undefined);
 
     const updateDb = async (db: Database) => {
         setDb(db);
@@ -31,10 +37,16 @@ export const ContextProvider = (props: PropsWithChildren) => {
         }
     };
 
+    const updateDrive = async (drive: string) => {
+        setDrive(drive);
+    };
+
     return (
         <DbContext.Provider value={{ db, updateDb }} >
             <FoldersContext.Provider value={{ folders, updateFolders }} >
-                {props.children}
+                <DriveContext.Provider value={{ drive, updateDrive }} >
+                    {props.children}
+                </DriveContext.Provider>
             </FoldersContext.Provider>
         </DbContext.Provider>
     );
@@ -42,3 +54,4 @@ export const ContextProvider = (props: PropsWithChildren) => {
 
 export const useDb = () => useContext(DbContext);
 export const useFolders = () => useContext(FoldersContext);
+export const useDrive = () => useContext(DriveContext);

@@ -3,10 +3,10 @@ import { useCallback, useMemo, useState } from 'preact/hooks';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { FileContainer } from './file-container';
-import { useDb, useFolders } from '../context';
 import { File } from './file';
 import { AddFolder } from './add-folder';
 import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
+import { useDb, useFolders, useDrive } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
 
@@ -22,6 +22,7 @@ const footerStyle = {
 export const FileManager = () => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
+    const { drive } = useDrive();
     const [cards, setCards] = useState([] as Card[]);
     const [collapsedFolder, setcollapsedFolder] = useState(undefined as number | undefined);
 
@@ -242,6 +243,7 @@ export const FileManager = () => {
             <div style={footerStyle}>
                 <DriveSelect />
                 <AddFolder />
+                {drive}
             </div>
         </>
     );

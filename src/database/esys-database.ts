@@ -14,6 +14,7 @@ const DB_FILE = 'PBLIST1.DAT';
 const BACKUP_FILE = 'PBLIST0.DAT';
 const DB_HEADER_TEXT = 'WMPLESYS';
 const TRACK_HEADER_TEXT = 'WMMP';
+const HEADER_SIZE = 32;
 
 export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boolean> => {
     // Check for ESYS folder
@@ -27,10 +28,11 @@ export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boo
     return true;
 };
 
-const roundUp = (input: number, multiple = 8) => Math.ceil(input/multiple)*multiple;
+// Round up to the nearest 16 bytes
+const roundUp = (input: number, multiple = 16) => Math.ceil(input / multiple) * multiple;
 const fileName = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
-const fatTime = (date = new Date()): number => 
-    ((date.getFullYear() - 80) << 25) | 
+const fatTime = (date = new Date()): number =>
+    ((date.getFullYear() - 80) << 25) |
     ((date.getMonth() + 1) << 21) |
     (date.getDate() << 16) |
     (date.getHours() << 11) |
@@ -70,11 +72,11 @@ export class EsysDatabase implements Database {
         this.view = new DataView(buffer);
         this.checkHeader();
         this.timestamp = this.view.getUint32(8);
-        this.serialNumber = this.view.getUint32(12); // 145373760
+        this.serialNumber = this.view.getUint32(12);
         // 4 byte unknown - not implemented
         this.folderCount = this.view.getUint32(20);
         this.trackCount = this.view.getUint32(24);
-        this.fileOffset = 32 + (this.folderCount * 256);
+        this.fileOffset = HEADER_SIZE + (this.folderCount * 256);
         this.trackOffset = this.fileOffset + roundUp(this.trackCount * 2);
     }
 
@@ -83,20 +85,20 @@ export class EsysDatabase implements Database {
         let lastOffset = this.trackCount;
 
         for (let i = this.folderCount - 1; i >= 0; i--) {
-            const start = 32 + (i * 256);
+            const start = HEADER_SIZE + (i * 256);
             const name = this.getText(start, 252);
             const offset = this.view.getUint32(start + 252);
             let tracks: Track[] = [];
             if (offset > 0) {
                 try {
-                    const from = (offset - (32 + (this.folderCount * 256))) / 2;
+                    const from = (offset - this.fileOffset) / 2;
                     tracks = await this.getTracks(from, lastOffset);
                     lastOffset = from;
                 } catch (e) {
                     console.error(e);
                 }
             }
-            folders.unshift({ name, id: -1-i, tracks });
+            folders.unshift({ name, id: -1 - i, tracks });
         }
 
         return folders;
@@ -105,7 +107,7 @@ export class EsysDatabase implements Database {
     public async setFolders(folders: Folder[]): Promise<boolean> {
         try {
             // Backup
-            const backupFile = await this.rootFolder.getFileHandle(BACKUP_FILE, {create: true});
+            const backupFile = await this.rootFolder.getFileHandle(BACKUP_FILE, { create: true });
             await this.writeFileHandle(backupFile, this.view.buffer);
 
             // Re-initialise
@@ -113,7 +115,7 @@ export class EsysDatabase implements Database {
             this.folderCount = folders.length;
             const tracks = folders.reduce((acc, folder) => [...acc, ...folder.tracks], [] as Track[]);
             this.trackCount = tracks.length;
-            this.fileOffset = 32 + (this.folderCount * 256);
+            this.fileOffset = HEADER_SIZE + (this.folderCount * 256);
             this.trackOffset = this.fileOffset + roundUp(this.trackCount * 2);
             const length = this.trackOffset + (this.trackCount * 768);
             const buffer = new ArrayBuffer(length);
@@ -127,7 +129,7 @@ export class EsysDatabase implements Database {
             let offset = this.fileOffset;
             for (let i = 0; i < this.folderCount; i++) {
                 const folder = folders[i];
-                const start = 32 + (i * 256);
+                const start = HEADER_SIZE + (i * 256);
                 this.setText(start, folder.name);
                 if (folder.tracks.length === 0) {
                     this.view.setUint32(start + 252, 0);
@@ -141,7 +143,7 @@ export class EsysDatabase implements Database {
             this.setTracks(tracks);
 
             // Write data file
-            const dbFile = await this.rootFolder.getFileHandle(DB_FILE, {create: true});
+            const dbFile = await this.rootFolder.getFileHandle(DB_FILE, { create: true });
             await this.writeFileHandle(dbFile, buffer);
 
             return true;
@@ -235,7 +237,7 @@ export class EsysDatabase implements Database {
 
         let lastWord = this.view.getUint32(0);
 
-        for (let i = 4; i < 32; i += 4) {
+        for (let i = 4; i < HEADER_SIZE; i += 4) {
             lastWord ^= this.view.getUint32(i);
         }
 
@@ -260,7 +262,7 @@ export class EsysDatabase implements Database {
         for (let i = 4; i < 28; i += 4) {
             lastWord ^= this.view.getUint32(i);
         }
-        this.view.setUint32(28, lastWord^0);
+        this.view.setUint32(28, lastWord ^ 0);
     }
 
     protected async getTracks(from = 0, to = this.trackCount): Promise<Track[]> {
@@ -314,7 +316,7 @@ export class EsysDatabase implements Database {
     protected encodeFile(id: number, buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
         // Remove all id3 frames
         const stripped = this.stripId3(buffer);
-        const encoded = new Uint8Array(32 + stripped.byteLength);
+        const encoded = new Uint8Array(HEADER_SIZE + stripped.byteLength);
         const view = new DataView(encoded.buffer);
 
         // Header
@@ -338,7 +340,44 @@ export class EsysDatabase implements Database {
 
         // Encode
         // TODO
+        // 145373760
         return stripped; // encoded.buffer;
+    }
+
+    protected mple_build_conv_array(trackno: number, conv: Uint8Array) {
+        /*
+        The obfuscation mechanism is a trivial "substitution cypher" based on
+        the track number. Start off with a 256-byte array (one for each
+        possible byte value) and fill it with array[index] = 256 -
+        index. Then, start working your way through powers of 2 from 1 up to
+        the biggest power of 2 less than or equal to the track number. For
+        each power N, if the track number has bit N set, go through your array
+        in blocks of 2N, and swap the first N bytes of the block with the
+        second N bytes. Here's the C code I've written to do this:
+        */
+        for (let i = 0; i < 256; i++) {
+            conv[i] = 255 - i;
+        }
+
+        let bit = 1;
+        while (bit <= trackno) {
+            if (trackno & bit) {
+                for (let j = 0; j < 256; j += bit * 2) {
+                    for (let k = 0; k < bit; k++) {
+                        const temp = conv[j + k];
+                        conv[j + k] = conv[j + k + bit];
+                        conv[j + k + bit] = temp;
+                    }
+                }
+            }
+            bit <<= 1;
+        }
+        /*
+        Note that this array works for conversion in either
+        direction. However, before it can be used, a further XOR must be
+        applied to the conversion array; the entire array is xor'd with a
+        bitflipped version of the last octet of the media serial number.
+        */
     }
 
     protected stripId3(buffer: ArrayBuffer): ArrayBuffer {

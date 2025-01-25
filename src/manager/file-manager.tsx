@@ -6,7 +6,7 @@ import { FileContainer } from './file-container';
 import { File } from './file';
 import { AddFolder } from './add-folder';
 import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
-import { useDb, useFolders, useDrive } from '../context';
+import { useDb, useFolders } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
 import { readTags } from '../id3';
@@ -23,7 +23,6 @@ const footerStyle = {
 export const FileManager = () => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
-    const { drive } = useDrive();
     const [cards, setCards] = useState([] as Card[]);
     const [collapsedFolder, setcollapsedFolder] = useState(undefined as number | undefined);
 
@@ -146,16 +145,25 @@ export const FileManager = () => {
     };
 
     const onRename = async (toRename: Card) => {
-        const name = prompt('Enter new name', toRename.name);
-        if (!name || name === toRename.name) {
+        const newTitle = prompt('Enter new title', toRename.name);
+        if (!newTitle) {
             return;
+        }
+
+        let newArtist = toRename.artist;
+        if (toRename.type === 'track') {
+            newArtist = prompt('Enter new artist', newArtist) || undefined;
+            if (!newArtist) {
+                return;
+            }
         }
 
         // Rename card
         const newCards = [...cards];
         const card = newCards.find(card => card.id === toRename.id);
         if (card) {
-            card.name = name;
+            card.name = newTitle;
+            card.artist = newArtist;
         }
 
         const folders = buildFolders(newCards);
@@ -243,9 +251,8 @@ export const FileManager = () => {
                 </FileContainer>
             </DndProvider>
             <div style={footerStyle}>
-                <DriveSelect />
                 <AddFolder />
-                {drive}
+                <DriveSelect />
             </div>
         </>
     );

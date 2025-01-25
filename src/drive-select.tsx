@@ -10,10 +10,10 @@ const style = {
 }
 
 export const DriveSelect = () => {
-    const { updateDb } = useDb();
-    const { updateDrive } = useDrive();
+    const { db, updateDb } = useDb();
+    const { drive, updateDrive } = useDrive();
 
-    const onClick = async () => {
+    const onConnect = async () => {
         const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
         if (fileSystem) {
             try {
@@ -26,10 +26,24 @@ export const DriveSelect = () => {
         }
     };
 
+    const onDisconnect = () => {
+        updateDb(undefined);
+        updateDrive(undefined);
+    };
+
     return (
-        <button style={style}
-            onClick={onClick}>
-            Select Drive
-        </button>
+        <>
+            {db &&
+                <button style={style}
+                    onClick={onDisconnect}>
+                    Disconnect
+                </button>
+            }
+            <button style={style}
+                onClick={onConnect}>
+                Select Drive
+            </button>
+            {drive && `Connected to ${drive}`}
+        </>
     );
 };

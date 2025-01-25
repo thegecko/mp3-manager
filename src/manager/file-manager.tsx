@@ -1,4 +1,4 @@
-import * as id3js from 'id3js'
+
 import { useCallback, useMemo, useState } from 'preact/hooks';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -9,6 +9,7 @@ import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
 import { useDb, useFolders, useDrive } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
+import { readId3 } from '../id3';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
 
@@ -186,12 +187,12 @@ export const FileManager = () => {
             const buffer = await file.arrayBuffer();
             await db.writeFile(id, buffer, duration, audio.length);
 
-            const id3 = await id3js.fromFile(file);
+            const id3 = await readId3(buffer);
             return {
                 id,
-                name: id3?.title || 'unknown',
-                file: file.name,
-                artist: id3?.artist || 'unknown'
+                name: id3.title || 'unknown',
+                artist: id3.artist || 'unknown',
+                file: file.name
             }
         } catch (e) {
             console.error(e);

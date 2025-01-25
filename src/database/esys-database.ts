@@ -6,6 +6,7 @@
 //  Generation 1 (NW-Sxx, NW-Exx except NW-E99)
 //  Generation 2 (NW-E99)
 
+import { removeId3 } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 
 const ROOT_FOLDER = 'ESYS';
@@ -262,7 +263,7 @@ export class EsysDatabase implements Database {
         for (let i = 4; i < 28; i += 4) {
             lastWord ^= this.view.getUint32(i);
         }
-        this.view.setUint32(28, lastWord ^ 0);
+        this.view.setUint32(28, lastWord);
     }
 
     protected async getTracks(from = 0, to = this.trackCount): Promise<Track[]> {
@@ -315,7 +316,9 @@ export class EsysDatabase implements Database {
 
     protected encodeFile(id: number, buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
         // Remove all id3 frames
-        const stripped = this.stripId3(buffer);
+        const stripped = removeId3(buffer);
+        // const converted = mple_build_conv_array(isEsys, stripped)
+        // const encoded = new Uint8Array(HEADER_SIZE + converted.byteLength);
         const encoded = new Uint8Array(HEADER_SIZE + stripped.byteLength);
         const view = new DataView(encoded.buffer);
 
@@ -341,10 +344,15 @@ export class EsysDatabase implements Database {
         // Encode
         // TODO
         // 145373760
+        // 1000101010100011101001000000
+        // 0000000000000000000001000000
+        // 01000000
+        // 10111111
         return stripped; // encoded.buffer;
     }
 
-    protected mple_build_conv_array(trackno: number, conv: Uint8Array) {
+    protected createCypher(trackno: number): Uint8Array {
+        const conv = new Uint8Array(256);
         /*
         The obfuscation mechanism is a trivial "substitution cypher" based on
         the track number. Start off with a 256-byte array (one for each
@@ -372,12 +380,20 @@ export class EsysDatabase implements Database {
             }
             bit <<= 1;
         }
+
         /*
         Note that this array works for conversion in either
         direction. However, before it can be used, a further XOR must be
         applied to the conversion array; the entire array is xor'd with a
         bitflipped version of the last octet of the media serial number.
         */
+
+        const flippedOctet = this.serialNumber & 0xff ^ 0xff;
+        for (let i = 0; i < conv.byteLength; i++) {
+            conv[i] ^= flippedOctet;
+        }
+
+        return conv;
     }
 
     protected stripId3(buffer: ArrayBuffer): ArrayBuffer {

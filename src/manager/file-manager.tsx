@@ -9,7 +9,7 @@ import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
 import { useDb, useFolders, useDrive } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
-import { readId3 } from '../id3';
+import { readTags } from '../id3';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
 
@@ -185,13 +185,14 @@ export const FileManager = () => {
             const duration = Math.round(audio.duration * 1000);
 
             const buffer = await file.arrayBuffer();
+            // Do this before writing which removes the tags
+            const tags = await readTags(buffer);
             await db.writeFile(id, buffer, duration, audio.length);
 
-            const id3 = await readId3(buffer);
             return {
                 id,
-                name: id3.title || 'unknown',
-                artist: id3.artist || 'unknown',
+                name: tags.title || 'unknown',
+                artist: tags.artist || 'unknown',
                 file: file.name
             }
         } catch (e) {

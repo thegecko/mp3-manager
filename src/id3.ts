@@ -1,26 +1,22 @@
-export interface ID3 {
-    title?: string;
-    artist?: string;
-}
+// Small ID3 library to manage text ID3 tags
+// Based on https://github.com/Zazama/node-id3
 
-export const readId3 = async (buffer: ArrayBuffer): Promise<ID3> => {
+export const readTags = async (buffer: ArrayBuffer): Promise<{ [key: string]: string }> => {
     const tags = getTagsFromBuffer(new Uint8Array(buffer));
-    return {
-        title: tags.title || 'unknown',
-        artist: tags.artist || 'unknown'
-    };
+    return tags;
 };
 
-export const removeId3 = (buffer: ArrayBuffer): ArrayBuffer => {
+export const deleteTags = (buffer: ArrayBuffer): ArrayBuffer => {
     return removeTagsFromBuffer(new Uint8Array(buffer)).buffer;
 };
 
-export const addId3 = (buffer: ArrayBuffer, id3: ID3): ArrayBuffer => {
+export const addTags = (buffer: ArrayBuffer, tags: { [key: string]: string }): ArrayBuffer => {
+    // Create tags list from identifiers below
+    // Reveerse search v2 ones to v3 and always write version 3
     throw new Error('Not implemented');
 };
 
 const getTagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } => {
-    debugger;
     const tags: { [key: string]: string } = {}
 
     const framePosition = getFramePosition(buffer);
@@ -65,7 +61,7 @@ const getTagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } => {
         if (!frameHeaderFlags.encryption && !frameHeaderFlags.compression) {
 
             const name = decoder.decode(frameHeader.subarray(0, frameIdentifierSize));
-            let identifier = FRAME_IDENTIFIERS[name];
+            let identifier = (ID3Version === 2) ? FRAME_IDENTIFIERS_V2[name] : FRAME_IDENTIFIERS_V3[name];
 
             if (identifier) {
                 const frameBodyOffset = frameHeaderFlags.dataLengthIndicator ? 4 : 0;
@@ -284,18 +280,49 @@ const processUnsynchronisedBuffer = (buffer: Uint8Array): Uint8Array => {
     return new Uint8Array(newDataArr);
 };
 
-const FRAME_IDENTIFIERS: { [key: string]: string } = {
+const FRAME_IDENTIFIERS_V2: { [key: string]: string } = {
     TAL: 'album',
-    TALB: 'album',
     TBP: 'bpm',
-    TBPM: 'bpm',
     TCM: 'composer',
     TCO: 'genre',
+    TCR: 'copyright',
+    TDA: 'date',
+    TDY: 'playlistDelay',
+    TEN: 'encodedBy',
+    TFT: 'fileType',
+    TIM: 'time',
+    TKE: 'initialKey',
+    TLA: 'language',
+    TLE: 'length',
+    TMT: 'mediaType',
+    TOA: 'originalArtist',
+    TOF: 'originalFilename',
+    TOL: 'originalTextwriter',
+    TOR: 'originalYear',
+    TOT: 'originalTitle',
+    TP1: 'artist',
+    TP2: 'performerInfo',
+    TP3: 'conductor',
+    TP4: 'remixArtist',
+    TPA: 'partOfSet',
+    TPB: 'publisher',
+    TRC: 'ISRC',
+    TRD: 'recordingDates',
+    TRK: 'trackNumber',
+    TSI: 'size',
+    TSS: 'encodingTechnology',
+    TT1: 'contentGroup',
+    TT2: 'title',
+    TT3: 'subtitle',
+    TYE: 'year'
+};
+
+const FRAME_IDENTIFIERS_V3: { [key: string]: string } = {
+    TALB: 'album',
+    TBPM: 'bpm',
     TCOM: 'composer',
     TCON: 'genre',
     TCOP: 'copyright',
-    TCR: 'copyright',
-    TDA: 'date',
     TDAT: 'date',
     TDEN: 'encodingTime',
     TDLY: 'playlistDelay',
@@ -303,45 +330,26 @@ const FRAME_IDENTIFIERS: { [key: string]: string } = {
     TDRC: 'recordingTime',
     TDRL: 'releaseTime',
     TDTG: 'taggingTime',
-    TDY: 'playlistDelay',
-    TEN: 'encodedBy',
     TENC: 'encodedBy',
     TEXT: 'textWriter',
     TFLT: 'fileType',
-    TFT: 'fileType',
-    TIM: 'time',
     TIME: 'time',
     TIPL: 'involvedPeopleList',
     TIT1: 'contentGroup',
     TIT2: 'title',
     TIT3: 'subtitle',
-    TKE: 'initialKey',
     TKEY: 'initialKey',
-    TLA: 'language',
     TLAN: 'language',
-    TLE: 'length',
     TLEN: 'length',
     TMCL: 'musicianCreditsList',
     TMED: 'mediaType',
     TMOO: 'mood',
-    TMT: 'mediaType',
-    TOA: 'originalArtist',
     TOAL: 'originalTitle',
-    TOF: 'originalFilename',
     TOFN: 'originalFilename',
-    TOL: 'originalTextwriter',
     TOLY: 'originalTextwriter',
     TOPE: 'originalArtist',
-    TOR: 'originalYear',
     TORY: 'originalYear',
-    TOT: 'originalTitle',
     TOWN: 'fileOwner',
-    TP1: 'artist',
-    TP2: 'performerInfo',
-    TP3: 'conductor',
-    TP4: 'remixArtist',
-    TPA: 'partOfSet',
-    TPB: 'publisher',
     TPE1: 'artist',
     TPE2: 'performerInfo',
     TPE3: 'conductor',
@@ -349,25 +357,16 @@ const FRAME_IDENTIFIERS: { [key: string]: string } = {
     TPOS: 'partOfSet',
     TPRO: 'producedNotice',
     TPUB: 'publisher',
-    TRC: 'ISRC',
     TRCK: 'trackNumber',
-    TRD: 'recordingDates',
     TRDA: 'recordingDates',
-    TRK: 'trackNumber',
     TRSN: 'internetRadioName',
     TRSO: 'internetRadioOwner',
-    TSI: 'size',
     TSIZ: 'size',
     TSOA: 'albumSortOrder',
     TSOP: 'performerSortOrder',
     TSOT: 'titleSortOrder',
     TSRC: 'ISRC',
-    TSS: 'encodingTechnology',
     TSSE: 'encodingTechnology',
     TSST: 'setSubtitle',
-    TT1: 'contentGroup',
-    TT2: 'title',
-    TT3: 'subtitle',
-    TYE: 'year',
     TYER: 'year'
 };

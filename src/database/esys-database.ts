@@ -6,7 +6,7 @@
 //  Generation 1 (NW-Sxx, NW-Exx except NW-E99)
 //  Generation 2 (NW-E99)
 
-import { removeId3 } from '../id3';
+import { deleteTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 
 const ROOT_FOLDER = 'ESYS';
@@ -316,10 +316,19 @@ export class EsysDatabase implements Database {
 
     protected encodeFile(id: number, buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
         // Remove all id3 frames
-        const stripped = removeId3(buffer);
-        // const converted = mple_build_conv_array(isEsys, stripped)
-        // const encoded = new Uint8Array(HEADER_SIZE + converted.byteLength);
-        const encoded = new Uint8Array(HEADER_SIZE + stripped.byteLength);
+        const stripped = deleteTags(buffer);
+
+        // Create and substitute cypher
+        const cypher = this.createCypher(id);
+        const substituted = new Uint8Array(stripped);
+        for (let i = 0; i < substituted.length; i++) {
+            const byte = substituted[i];
+            substituted[i] = cypher[byte];
+        }
+
+        // New buffer
+        const encoded = new Uint8Array(HEADER_SIZE + substituted.byteLength);
+        encoded.set(substituted, HEADER_SIZE);
         const view = new DataView(encoded.buffer);
 
         // Header
@@ -328,7 +337,7 @@ export class EsysDatabase implements Database {
         encoded.set(text, 0);
 
         // 4 byte longword - total file size (bytes)
-        view.setUint32(4, stripped.byteLength);
+        view.setUint32(4, encoded.byteLength);
         // 4 byte longword - duration (ms)
         view.setUint32(8, duration);
         // 4 byte longword - frame count
@@ -341,14 +350,7 @@ export class EsysDatabase implements Database {
         view.setUint32(24, 0);
         view.setUint32(28, 0);
 
-        // Encode
-        // TODO
-        // 145373760
-        // 1000101010100011101001000000
-        // 0000000000000000000001000000
-        // 01000000
-        // 10111111
-        return stripped; // encoded.buffer;
+        return encoded.buffer;
     }
 
     protected createCypher(trackno: number): Uint8Array {
@@ -394,11 +396,6 @@ export class EsysDatabase implements Database {
         }
 
         return conv;
-    }
-
-    protected stripId3(buffer: ArrayBuffer): ArrayBuffer {
-        // TODO
-        return buffer;
     }
 
     protected decodeFile(buffer: ArrayBuffer): ArrayBuffer {

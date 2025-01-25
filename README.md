@@ -6,6 +6,8 @@ https://sourceforge.net/projects/symphonic/
 
 https://github.com/brianpipa/jsymphonic
 
+https://github.com/Zazama/node-id3
+
 ## Implementation Status
 
 ### Database Formats
@@ -17,7 +19,7 @@ https://github.com/brianpipa/jsymphonic
 
 - [x] Reorder
 - [x] Rename
-- [ ] Upload (need to encode)
+- [x] Upload
 - [x] Delete
 - [ ] Download (need to decode and add id3 tag)
 
@@ -26,6 +28,6 @@ https://github.com/brianpipa/jsymphonic
 - [x] Add
 - [x] Reorder
 - [x] Rename
-- [ ] Upload (need to encode)
+- [x] Upload
 - [x] Delete
 - [ ] Download (jszip would add ~100kb)

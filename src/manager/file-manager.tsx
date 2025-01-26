@@ -6,10 +6,9 @@ import { FileContainer } from './file-container';
 import { File } from './file';
 import { AddFolder } from './add-folder';
 import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
-import { useDb, useFolders } from '../context';
+import { useBusy, useDb, useFolders } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
-import { readTags } from '../id3';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
 
@@ -17,12 +16,14 @@ const footerStyle = {
     height: '50px',
     display: 'flex',
     alignItems: 'center',
-    background: 'lightgray',
+    background: '#d5d5d5',
+    padding: '0 10px',
 }
 
 export const FileManager = () => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
+    const { updateBusy } = useBusy();
     const [cards, setCards] = useState([] as Card[]);
     const [collapsedFolder, setcollapsedFolder] = useState(undefined as number | undefined);
 
@@ -107,22 +108,26 @@ export const FileManager = () => {
         const newFolders = new Map<string, Track[]>();
         const newTracks: Track[] = [];
 
-        if (isDataTransfer(card)) {
-            const files = await getFiles(card);
-            for (const { file, folder } of files) {
-                const track = await createFile(file);
-                if (track) {
-                    if (folder) {
-                        newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
-                    } else {
-                        newTracks.push(track);
+        updateBusy(true);
+        try {
+            if (isDataTransfer(card)) {
+                const files = await getFiles(card);
+                for (const { file, folder } of files) {
+                    const track = await createFile(file);
+                    if (track) {
+                        if (folder) {
+                            newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
+                        } else {
+                            newTracks.push(track);
+                        }
                     }
                 }
             }
+            const folders = buildFolders(cards, { newFolders, newTracks });
+            updateFolders(folders);
+        } finally {
+            updateBusy(false);
         }
-
-        const folders = buildFolders(cards, { newFolders, newTracks });
-        updateFolders(folders);
     };
 
     const onDelete = async (toDelete: Card) => {
@@ -175,7 +180,18 @@ export const FileManager = () => {
             throw new Error('No database');
         }
 
-        // ToDO
+        const buffer = await db.readFile(track.id);
+        if (buffer) {
+            const blob = new Blob([buffer]);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = track.file || `${track.name}.mp3`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
     };
 
     // Support functions
@@ -193,16 +209,8 @@ export const FileManager = () => {
             const duration = Math.round(audio.duration * 1000);
 
             const buffer = await file.arrayBuffer();
-            // Do this before writing which removes the tags
-            const tags = await readTags(buffer);
-            await db.writeFile(id, buffer, duration, audio.length);
-
-            return {
-                id,
-                name: tags.title || 'unknown',
-                artist: tags.artist || 'unknown',
-                file: file.name
-            }
+            const track = await db.writeFile(id, buffer, file.name, duration, audio.length);
+            return track;
         } catch (e) {
             console.error(e);
         }

@@ -11,9 +11,12 @@ export const deleteTags = (buffer: ArrayBuffer): ArrayBuffer => {
 };
 
 export const addTags = (buffer: ArrayBuffer, tags: { [key: string]: string }): ArrayBuffer => {
-    // Create tags list from identifiers below
-    // Reveerse search v2 ones to v3 and always write version 3
-    throw new Error('Not implemented');
+    const frontValues = createTags(tags);
+    const backValues = new Uint8Array(buffer);
+    const mergedArray = new Uint8Array(frontValues.length + backValues.length);
+    mergedArray.set(frontValues);
+    mergedArray.set(backValues, frontValues.length);
+    return mergedArray;
 };
 
 const getTagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } => {
@@ -108,6 +111,52 @@ const removeTagsFromBuffer = (buffer: Uint8Array): Uint8Array => {
     return buffer;
 };
 
+const createTags = (tags: { [key: string ]: string }): Uint8Array => {
+    const frames: { [key: string ]: string } = {};
+
+    let length = 10;
+    for (const [key, value] of Object.entries(tags)) {
+        const found = Object.entries(FRAME_IDENTIFIERS_V3).find(([_, label]) => label === key);
+        const identifier = found ? found[0] : undefined;
+        if (identifier && identifier.length === 4) {
+            length += value.length + 11;
+            frames[identifier] = value;
+        }
+    }
+
+    const tagBuffer = new Uint8Array(length);
+    const view = new DataView(tagBuffer.buffer);
+
+    let offset = 0;
+    const encoder = new TextEncoder();
+
+    // ID3 header
+    tagBuffer.set(encoder.encode('ID3'), offset);
+    offset += 3;
+    view.setUint16(offset, 0x0300);
+    offset += 2;
+    view.setUint16(offset, 0x0000);
+    offset += 1;
+    tagBuffer.set(encodeSize(length - 10), offset);
+    offset += 4;
+
+    for (const [identifier, text] of Object.entries(frames)) {
+        // Tag header
+        tagBuffer.set(encoder.encode(identifier), offset);
+        offset += 4;
+        view.setUint32(offset, text.length + 1);
+        offset += 6;
+
+        // Tag body
+        view.setUint8(offset, 0x00); // ISO-8859-1
+        offset += 1;
+        tagBuffer.set(encoder.encode(text), offset);
+        offset += text.length;
+    }
+
+    return tagBuffer;
+};
+
 const parseTagHeaderFlags = (header: Uint8Array) => {
     if (header.length < 10) {
         return {}
@@ -185,13 +234,21 @@ const isValidEncodedSize = (buffer: Uint8Array) => {
     ) & 128) === 0
 }
 
+const encodeSize = (size: number): Uint8Array => {
+    const byte_3 = size & 0x7F;
+    const byte_2 = (size >> 7) & 0x7F;
+    const byte_1 = (size >> 14) & 0x7F;
+    const byte_0 = (size >> 21) & 0x7F;
+    return new Uint8Array([byte_0, byte_1, byte_2, byte_3]);
+};
+
 const decodeSize = (buffer: Uint8Array) => {
     return (
         (buffer[0] << 21) +
         (buffer[1] << 14) +
         (buffer[2] << 7) +
         buffer[3]
-    )
+    );
 };
 
 const isValidID3Header = (buffer: Uint8Array) => {

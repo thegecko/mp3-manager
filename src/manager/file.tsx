@@ -12,7 +12,9 @@ const style = {
 	cursor: 'move',
 	padding: '0.1rem',
 	margin: '.2rem',
-	border: '1px solid gray'
+	border: '1px solid gray',
+	borderRadius: '5px',
+	boxShadow: '2px 2px #dbdbdb'
 }
 
 export interface FileProps {
@@ -62,10 +64,10 @@ export const File = memo((props: FileProps) => {
 
 	connectDrag(ref);
 	connectDrop(ref);
-	const background = type === 'folder' ? 'lightblue' : 'white'
+	const background = type === 'folder' ? 'lightblue' : '#fffff5'
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
-	const marginLeft = type === 'track' ? '20px' : '0';
+	const marginLeft = type !== 'folder' ? '20px' : '0';
 
 	return (
 		<div ref={ref} style={{...style, background, opacity, marginLeft }} data-handler-id={handlerId}>	
@@ -85,20 +87,18 @@ export const File = memo((props: FileProps) => {
 				}
 			</span>
 			<span style={{marginLeft: 'auto', alignContent: 'center'}}>
-				{type === 'track' &&
+				{type !== 'folder' &&
 					<button
 						title='Downlaod'
 						onClick={() => onDownload(id)}>
 						⬇
 					</button>
 				}
-				{type !== 'new' &&
-					<button
-						title='Delete'
-						onClick={() => onDelete(id)}>
-						🗑
-					</button>
-				}
+				<button
+					title='Delete'
+					onClick={() => onDelete(id)}>
+					🗑
+				</button>
 			</span>
 		</div>
 	);

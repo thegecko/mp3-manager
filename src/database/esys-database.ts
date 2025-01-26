@@ -6,7 +6,7 @@
 //  Generation 1 (NW-Sxx, NW-Exx except NW-E99)
 //  Generation 2 (NW-E99)
 
-import { deleteTags } from '../id3';
+import { addTags, deleteTags, readTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 
 const ROOT_FOLDER = 'ESYS';
@@ -31,7 +31,7 @@ export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boo
 
 // Round up to the nearest 16 bytes
 const roundUp = (input: number, multiple = 16) => Math.ceil(input / multiple) * multiple;
-const fileName = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
+const getFilename = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
 const fatTime = (date = new Date()): number =>
     ((date.getFullYear() - 80) << 25) |
     ((date.getMonth() + 1) << 21) |
@@ -63,7 +63,7 @@ export class EsysDatabase implements Database {
     protected trackCount: number;
     protected fileOffset: number;
     protected trackOffset: number;
-    protected trackIds: Set<number> | undefined;
+    protected tracks = new Map<number, Track | undefined>;
 
     protected constructor(
         protected rootFolder: FileSystemDirectoryHandle,
@@ -112,7 +112,7 @@ export class EsysDatabase implements Database {
             await this.writeFileHandle(backupFile, this.view.buffer);
 
             // Re-initialise
-            this.trackIds = undefined;
+            this.tracks.clear();
             this.folderCount = folders.length;
             const tracks = folders.reduce((acc, folder) => [...acc, ...folder.tracks], [] as Track[]);
             this.trackCount = tracks.length;
@@ -156,58 +156,67 @@ export class EsysDatabase implements Database {
     }
 
     public async getNextTrackId(): Promise<number> {
-        if (this.trackIds === undefined) {
-            this.trackIds = new Set<number>();
-            for (let i = 0; i < this.trackCount; i++) {
-                const offset = this.fileOffset + (i * 2);
-                const id = this.view.getUint16(offset);
-                this.trackIds.add(id);
-            }
-        }
-
         let id: number | undefined;
-        for (let i = 1; i <= this.trackIds.size; i++) {
-            if (!this.trackIds.has(i)) {
+        for (let i = 1; i <= this.tracks.size; i++) {
+            if (!this.tracks.has(i)) {
                 id = i;
                 break;
             }
         }
 
         if (id === undefined) {
-            id = this.trackIds.size + 1;
+            id = this.tracks.size + 1;
         }
 
-        this.trackIds.add(id);
+        this.tracks.set(id, undefined);
         return id;
     }
 
     public async readFile(id: number): Promise<ArrayBuffer | undefined> {
         try {
-            const fileHandle = await this.dataFolder.getFileHandle(fileName(id));
+            const fileHandle = await this.dataFolder.getFileHandle(getFilename(id));
             const file = await fileHandle.getFile();
             const data = await file.arrayBuffer();
-            return this.decodeFile(data);
+            const decoded = this.decodeFile(id, data);
+            // Add id3 tags
+            const track = this.tracks.get(id);
+            if (track) {
+                const tagged = addTags(decoded, {
+                    encodedBy: 'mp3manager',
+                    title: track.name,
+                    artist: track.artist
+                });
+                return tagged;
+            }
+            return decoded;
         } catch (e) {
             console.error(e);
         }
     }
 
-    public async writeFile(id: number, data: ArrayBuffer, duration: number, frames: number): Promise<boolean> {
+    public async writeFile(id: number, data: ArrayBuffer, fileName: string, duration: number, frames: number): Promise<Track | undefined> {
         try {
-            const encoded = this.encodeFile(id, data, duration, frames);
-            const fileHandle = await this.dataFolder.getFileHandle(fileName(id), { create: true });
+            // Do this before removing id3 frames!
+            const tags = await readTags(data);
+            // Remove all id3 frames
+            const stripped = deleteTags(data);
+            const encoded = this.encodeFile(id, stripped, duration, frames);
+            const fileHandle = await this.dataFolder.getFileHandle(getFilename(id), { create: true });
             await this.writeFileHandle(fileHandle, encoded);
-            return true;
+            return {
+                id,
+                name: tags.title || 'unknown',
+                artist: tags.artist || 'unknown',
+                file: fileName
+            };
         } catch (e) {
             console.error(e);
         }
-
-        return false;
     }
 
     public async deleteFile(id: number): Promise<boolean> {
         try {
-            await this.dataFolder.removeEntry(fileName(id));
+            await this.dataFolder.removeEntry(getFilename(id));
             return true;
         } catch (e) {
             console.error(e);
@@ -279,6 +288,7 @@ export class EsysDatabase implements Database {
             tracks.push({ id, file, name, artist });
         }
 
+        this.updateTracks(tracks);
         return tracks;
     }
 
@@ -292,35 +302,41 @@ export class EsysDatabase implements Database {
             this.setText(metaOffset + 256, track.name);
             this.setText(metaOffset + 512, track.artist);
         }
+
+        this.tracks.clear();
+        this.updateTracks(tracks);
     }
 
-    protected getText(offest: number, length: number): string {
+    protected updateTracks(tracks: Track[]): void {
+        for (const track of tracks) {
+            this.tracks.set(track.id, track);
+        }
+    }
+
+    protected getText(offset: number, length: number): string {
         let terminator = 0;
 
         for (let j = 0; j < length; j++) {
-            if (this.view.getUint16(offest + j) === 0) {
+            if (this.view.getUint16(offset + j) === 0) {
                 terminator = j;
                 break;
             }
         }
 
-        const bytes = this.view.buffer.slice(offest, offest + terminator);
+        const bytes = this.view.buffer.slice(offset, offset + terminator);
         return new TextDecoder('UTF-16BE').decode(bytes).trim();
     }
 
-    protected setText(offest: number, text: string): void {
+    protected setText(offset: number, text: string): void {
         for (let i = 0; i < text.length; i++) {
-            this.view.setUint16(offest + (i * 2), text.charCodeAt(i));
+            this.view.setUint16(offset + (i * 2), text.charCodeAt(i));
         }
     }
 
     protected encodeFile(id: number, buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
-        // Remove all id3 frames
-        const stripped = deleteTags(buffer);
-
         // Create and substitute cypher
         const cypher = this.createCypher(id);
-        const substituted = new Uint8Array(stripped);
+        const substituted = new Uint8Array(buffer);
         for (let i = 0; i < substituted.length; i++) {
             const byte = substituted[i];
             substituted[i] = cypher[byte];
@@ -331,7 +347,7 @@ export class EsysDatabase implements Database {
         encoded.set(substituted, HEADER_SIZE);
         const view = new DataView(encoded.buffer);
 
-        // Header
+        // Add header
         // 4 bytes - WMMP
         const text = new TextEncoder().encode(TRACK_HEADER_TEXT);
         encoded.set(text, 0);
@@ -353,22 +369,40 @@ export class EsysDatabase implements Database {
         return encoded.buffer;
     }
 
+    protected decodeFile(id: number, buffer: ArrayBuffer): ArrayBuffer {
+        // Remove header
+        const ar = new Uint8Array(buffer);
+        const substituted = ar.slice(HEADER_SIZE);
+
+        // Create and substitute cypher
+        const cypher = this.createCypher(id);
+        for (let i = 0; i < substituted.length; i++) {
+            const byte = substituted[i];
+            substituted[i] = cypher[byte];
+        }
+
+        return substituted;
+    }
+
     protected createCypher(trackno: number): Uint8Array {
-        const conv = new Uint8Array(256);
         /*
         The obfuscation mechanism is a trivial "substitution cypher" based on
         the track number. Start off with a 256-byte array (one for each
         possible byte value) and fill it with array[index] = 256 -
-        index. Then, start working your way through powers of 2 from 1 up to
-        the biggest power of 2 less than or equal to the track number. For
-        each power N, if the track number has bit N set, go through your array
-        in blocks of 2N, and swap the first N bytes of the block with the
-        second N bytes. Here's the C code I've written to do this:
+        index.
         */
+        const conv = new Uint8Array(256);
         for (let i = 0; i < 256; i++) {
             conv[i] = 255 - i;
         }
 
+        /*
+        Then, start working your way through powers of 2 from 1 up to
+        the biggest power of 2 less than or equal to the track number. For
+        each power N, if the track number has bit N set, go through your array
+        in blocks of 2N, and swap the first N bytes of the block with the
+        second N bytes.
+        */
         let bit = 1;
         while (bit <= trackno) {
             if (trackno & bit) {
@@ -389,17 +423,11 @@ export class EsysDatabase implements Database {
         applied to the conversion array; the entire array is xor'd with a
         bitflipped version of the last octet of the media serial number.
         */
-
         const flippedOctet = this.serialNumber & 0xff ^ 0xff;
         for (let i = 0; i < conv.byteLength; i++) {
             conv[i] ^= flippedOctet;
         }
 
         return conv;
-    }
-
-    protected decodeFile(buffer: ArrayBuffer): ArrayBuffer {
-        // TODO
-        return buffer;
     }
 }

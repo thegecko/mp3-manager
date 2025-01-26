@@ -11,8 +11,20 @@ const style = {
     left: 0,
     width: '100%',
     height: '100%',
-    background: 'rgba(255,255,255,0.85)',
+    background: 'rgba(220,220,220,0.85)',
     zIndex: 1000
+}
+
+const loader = {
+    width: '36px',
+    height: '36px',
+    border: '5px solid dodgerblue',
+    borderBottomColor: 'transparent',
+    borderRadius: '50%',
+    display: 'inline-block',
+    boxSizing: 'border-box',
+    animation: 'rotation 1s linear infinite',
+    margin: '10px'
 }
 
 export const Spinner = () => {
@@ -21,7 +33,10 @@ export const Spinner = () => {
     return (
         <>
             {busy &&
-                <div style={style}>Syncing...</div>
+                <div style={style}>
+                    <div style={loader}></div>
+                    <div>Saving...</div>
+                </div>
             }
         </>
     );

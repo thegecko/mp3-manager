@@ -9,7 +9,7 @@
 //  Generation 7 (NW-E01x, NW-S60x/S70x, NW-S71x, NW-A80x, NW-A91x)
 //  Vaio (VGF-AP1)
 
-import { Database, Folder } from './database-detector';
+import { Database, Folder, Track } from './database-detector';
 
 const ROOT_FOLDER = 'OMGAUDIO';
 
@@ -50,7 +50,7 @@ export class OmgDatabase implements Database {
         throw new Error('Method not implemented.');
     }
 
-    public writeFile(id: number, data: ArrayBuffer, duration: number, frames: number): Promise<boolean> {
+    public writeFile(id: number, data: ArrayBuffer, fileName: string, duration: number, frames: number): Promise<Track | undefined> {
         throw new Error('Method not implemented.');
     }
 

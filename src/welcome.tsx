@@ -9,7 +9,8 @@ const style = {
 export const Welcome = () =>{
     return (
         <div style={style}>
-            <div>🎵Welcome to <a href='https://github.com/thegecko/mp3-manager'>MP3 Manager</a>🎵</div>
+            <div>🎵 Welcome to <a href='https://github.com/thegecko/mp3-manager'>MP3 Manager</a> 🎵</div>
+            <br />
             <DriveSelect />
         </div>
     )

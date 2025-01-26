@@ -21,7 +21,7 @@ https://github.com/Zazama/node-id3
 - [x] Rename
 - [x] Upload
 - [x] Delete
-- [ ] Download (need to decode and add id3 tag)
+- [x] Download
 
 ### Folders
 

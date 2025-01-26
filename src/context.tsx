@@ -5,29 +5,29 @@ import type { Database, Folder } from './database/database-detector';
 
 export const DbContext = createContext({
     db: undefined as Database | undefined,
-    updateDb: (db: Database | undefined) => {}
+    updateDb: (db: Database | undefined) => { }
 });
 
 export const FoldersContext = createContext({
     folders: [] as Folder[],
-    updateFolders: (folders: Folder[]) => {}
+    updateFolders: (folders: Folder[]) => { }
 });
 
-export const DriveContext = createContext({
-    drive: undefined as String | undefined,
-    updateDrive: (drive: string | undefined) => {}
+export const FileSystemContext = createContext({
+    fs: undefined as FileSystemDirectoryHandle | undefined,
+    updateFs: (fs: FileSystemDirectoryHandle | undefined) => { }
 });
 
 export const BusyContext = createContext({
     busy: false,
-    updateBusy: (busy: boolean) => {}
+    updateBusy: (busy: boolean) => { }
 });
 
 export const ContextProvider = (props: PropsWithChildren) => {
+    const [busy, updateBusy] = useState(false);
+    const [fs, updateFs] = useState(undefined as FileSystemDirectoryHandle | undefined);
     const [db, setDb] = useState(undefined as Database | undefined);
     const [folders, setFolders] = useState([] as Folder[]);
-    const [drive, updateDrive] = useState(undefined as string | undefined);
-    const [busy, updateBusy] = useState(false);
 
     const busyWrapper = async (fn: () => Promise<void>) => {
         updateBusy(true);
@@ -57,19 +57,19 @@ export const ContextProvider = (props: PropsWithChildren) => {
     };
 
     return (
-        <DbContext.Provider value={{ db, updateDb }} >
-            <FoldersContext.Provider value={{ folders, updateFolders }} >
-                <DriveContext.Provider value={{ drive, updateDrive }} >
-                    <BusyContext.Provider value={{ busy, updateBusy }} >
+        <BusyContext.Provider value={{ busy, updateBusy }} >
+            <FileSystemContext.Provider value={{ fs, updateFs }} >
+                <DbContext.Provider value={{ db, updateDb }} >
+                    <FoldersContext.Provider value={{ folders, updateFolders }} >
                         {props.children}
-                    </BusyContext.Provider>
-                </DriveContext.Provider>
-            </FoldersContext.Provider>
-        </DbContext.Provider>
+                    </FoldersContext.Provider>
+                </DbContext.Provider>
+            </FileSystemContext.Provider>
+        </BusyContext.Provider>
     );
 };
 
+export const useBusy = () => useContext(BusyContext);
+export const useFs = () => useContext(FileSystemContext);
 export const useDb = () => useContext(DbContext);
 export const useFolders = () => useContext(FoldersContext);
-export const useDrive = () => useContext(DriveContext);
-export const useBusy = () => useContext(BusyContext);

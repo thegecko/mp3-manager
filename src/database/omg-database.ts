@@ -50,7 +50,7 @@ export class OmgDatabase implements Database {
         throw new Error('Method not implemented.');
     }
 
-    public writeFile(id: number, data: ArrayBuffer, fileName: string, duration: number, frames: number): Promise<Track | undefined> {
+    public writeFile(id: number, data: ArrayBuffer, duration: number, frames: number, fileName?: string): Promise<Track | undefined> {
         throw new Error('Method not implemented.');
     }
 

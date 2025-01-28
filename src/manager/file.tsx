@@ -28,10 +28,11 @@ export interface FileProps {
 	onDelete: (id: any) => void
 	onRename: (id: any) => void
 	onDownload: (id: any) => void
+	onAdd: (id: any) => void;
 }
 
 export const File = memo((props: FileProps) => {
-	const { id, type, text, title, onHover, onMove, onDrop, onDelete, onRename, onDownload } = props
+	const { id, type, text, title, onHover, onMove, onDrop, onDelete, onRename, onDownload, onAdd } = props
 	const ref = useRef(null)
 
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
@@ -68,9 +69,10 @@ export const File = memo((props: FileProps) => {
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
 	const marginLeft = type !== 'folder' ? '20px' : '0';
+	const paddingLeft = type !== 'folder' ? '50px' : '70px';
 
 	return (
-		<div ref={ref} style={{...style, background, opacity, marginLeft }} data-handler-id={handlerId}>	
+		<div ref={ref} style={{...style, background, opacity, marginLeft, paddingLeft }} data-handler-id={handlerId}>	
 			<span style={{flex: 1, textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
 				<span
 					title={title}
@@ -92,6 +94,13 @@ export const File = memo((props: FileProps) => {
 						title='Downlaod'
 						onClick={() => onDownload(id)}>
 						⬇
+					</button>
+				}
+				{type === 'folder' &&
+					<button
+						title='Add Track'
+						onClick={() => onAdd(id)}>
+						➕
 					</button>
 				}
 				<button

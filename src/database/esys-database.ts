@@ -194,7 +194,7 @@ export class EsysDatabase implements Database {
         }
     }
 
-    public async writeFile(id: number, data: ArrayBuffer, fileName: string, duration: number, frames: number): Promise<Track | undefined> {
+    public async writeFile(id: number, data: ArrayBuffer, duration: number, frames: number, fileName?: string): Promise<Track | undefined> {
         try {
             // Do this before removing id3 frames!
             const tags = await readTags(data);
@@ -203,11 +203,13 @@ export class EsysDatabase implements Database {
             const encoded = this.encodeFile(id, stripped, duration, frames);
             const fileHandle = await this.dataFolder.getFileHandle(getFilename(id), { create: true });
             await this.writeFileHandle(fileHandle, encoded);
+            const name = tags.title || 'unknown title';
+            const artist = tags.artist || 'unknown artist';
             return {
                 id,
-                name: tags.title || 'unknown',
-                artist: tags.artist || 'unknown',
-                file: fileName
+                name,
+                artist,
+                file: fileName || `${artist} - ${name}.mp3`
             };
         } catch (e) {
             console.error(e);

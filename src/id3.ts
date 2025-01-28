@@ -75,7 +75,7 @@ const getTagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } => {
                     frameBody = processUnsynchronisedBuffer(frameBody);
                 }
 
-                tags[identifier] = decoder.decode(frameBody).replace(/\0/g, '');
+                tags[identifier] = decoder.decode(frameBody).replace(/[\0\u0003]/g, '');
             }
         }
 

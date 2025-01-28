@@ -108,12 +108,13 @@ export const FileManager = () => {
         const newFolders = new Map<string, Track[]>();
         const newTracks: Track[] = [];
 
-        updateBusy(true);
         try {
+            updateBusy(true);
             if (isDataTransfer(card)) {
                 const files = await getFiles(card);
                 for (const { file, folder } of files) {
-                    const track = await createFile(file);
+                    const buffer = await file.arrayBuffer();
+                    const track = await createFile(buffer, file.name);
                     if (track) {
                         if (folder) {
                             newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
@@ -194,8 +195,47 @@ export const FileManager = () => {
         }
     };
 
+    const onAdd = async (folderRef: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        const trackUrl = prompt('Enter track URL', 'https://open.spotify.com/track/<id>');
+        if (!trackUrl) {
+            return;
+        }
+        
+        const trackId = trackUrl.replace(/^(.*[\\\/])/, '').split('?').shift();
+        if (trackId) {
+            try {
+                updateBusy(true);
+                const response = await fetch(`https://yank.g3v.co.uk/track/${trackId}`);
+                const buffer = await response.arrayBuffer();
+                const track = await createFile(buffer);
+
+                if (track) {
+                    let insertIndex = cards.indexOf(folderRef) + 1;
+                    if (insertIndex >= 0) {
+                        const newCards = [...cards];
+                        newCards.splice(insertIndex, 0, {
+                            id: NEW_ID,
+                            type: 'new',
+                            name: `add track(s)`
+                        });
+                        const folders = buildFolders(newCards, { newTracks: [track] });
+                        updateFolders(folders);
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                updateBusy(false);
+            }
+        }
+    };
+
     // Support functions
-    const createFile = async (file: File): Promise<Track | undefined> => {
+    const createFile = async (buffer: ArrayBuffer, name?: string): Promise<Track | undefined> => {
         if (!db) {
             throw new Error('No database');
         }
@@ -204,12 +244,10 @@ export const FileManager = () => {
             const id = await db.getNextTrackId();
 
             const ctx = new AudioContext();
-            const audioBuffer = await file.arrayBuffer();
-            const audio = await ctx.decodeAudioData(audioBuffer);
+            const audio = await ctx.decodeAudioData(buffer.slice(0));
             const duration = Math.round(audio.duration * 1000);
 
-            const buffer = await file.arrayBuffer();
-            const track = await db.writeFile(id, buffer, file.name, duration, audio.length);
+            const track = await db.writeFile(id, buffer, duration, audio.length, name);
             return track;
         } catch (e) {
             console.error(e);
@@ -248,6 +286,7 @@ export const FileManager = () => {
                 onDelete={onDelete}
                 onRename={onRename}
                 onDownload={onDownload}
+                onAdd={onAdd}
             />
         );
 

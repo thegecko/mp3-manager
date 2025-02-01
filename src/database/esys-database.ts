@@ -32,13 +32,6 @@ export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boo
 // Round up to the nearest 16 bytes
 const roundUp = (input: number, multiple = 16) => Math.ceil(input / multiple) * multiple;
 const getFilename = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
-const fatTime = (date = new Date()): number =>
-    ((date.getFullYear() - 80) << 25) |
-    ((date.getMonth() + 1) << 21) |
-    (date.getDate() << 16) |
-    (date.getHours() << 11) |
-    (date.getMinutes() << 5) |
-    (date.getSeconds() >> 1);
 
 export class EsysDatabase implements Database {
 

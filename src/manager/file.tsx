@@ -29,10 +29,11 @@ export interface FileProps {
 	onRename: (id: any) => void
 	onDownload: (id: any) => void
 	onAdd: (id: any) => void;
+	onYank: (id: any) => void;
 }
 
 export const File = memo((props: FileProps) => {
-	const { id, type, text, title, onHover, onMove, onDrop, onDelete, onRename, onDownload, onAdd } = props
+	const { id, type, text, title, onHover, onMove, onDrop, onDelete, onRename, onDownload, onAdd, onYank } = props
 	const ref = useRef(null)
 
 	const [{ isDragging, handlerId }, connectDrag] = useDrag({
@@ -69,7 +70,7 @@ export const File = memo((props: FileProps) => {
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
 	const marginLeft = type !== 'folder' ? '20px' : '0';
-	const paddingLeft = type !== 'folder' ? '50px' : '70px';
+	const paddingLeft = type !== 'folder' ? '50px' : '100px';
 
 	return (
 		<div ref={ref} style={{...style, background, opacity, marginLeft, paddingLeft }} data-handler-id={handlerId}>	
@@ -89,18 +90,25 @@ export const File = memo((props: FileProps) => {
 				}
 			</span>
 			<span style={{marginLeft: 'auto', alignContent: 'center'}}>
-				{type !== 'folder' &&
-					<button
-						title='Downlaod'
-						onClick={() => onDownload(id)}>
-						⬇
-					</button>
-				}
 				{type === 'folder' &&
 					<button
 						title='Add Track'
 						onClick={() => onAdd(id)}>
 						➕
+					</button>
+				}
+				{type === 'folder' &&
+					<button
+						title='Yank Track'
+						onClick={() => onYank(id)}>
+						🎵
+					</button>
+				}
+				{type !== 'folder' &&
+					<button
+						title='Download Track'
+						onClick={() => onDownload(id)}>
+						⬇
 					</button>
 				}
 				<button

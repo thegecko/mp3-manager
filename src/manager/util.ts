@@ -1,5 +1,6 @@
-import type { Folder, Track } from '../database/database-detector';
+import type { Database, Folder, Track } from '../database/database-detector';
 
+export const MP3_EXTENSION = 'mp3';
 export const NEW_ID = -99;
 
 const isFile = (entry: FileSystemEntry): entry is FileSystemFileEntry => entry.isFile;
@@ -45,13 +46,13 @@ const cardToTrack = (card: Card): Track => ({
     file: card.file || ''
 });
 
-const newFolder = (name: string, tracks: Track[] = []): Folder => ({
+export const newFolder = (name: string, tracks: Track[] = []): Folder => ({
     name,
     id: -1,
     tracks
 });
 
-export const getFiles = async (transfer: DataTransfer, filter = 'mp3'): Promise<FileAndFolder[]> => {
+export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): Promise<FileAndFolder[]> => {
     const files: FileAndFolder[] = [];
 
     const addFile = async (entry: FileSystemEntry, folder?: string) => {
@@ -162,4 +163,23 @@ export const buildFolders = (cards: Card[], data?: { newFolders?: Map<string, Tr
     }
 
     return folders;
+};
+
+export const createFile = async (db: Database, buffer: ArrayBuffer, name?: string): Promise<Track | undefined> => {
+    if (!db) {
+        throw new Error('No database');
+    }
+
+    try {
+        const id = await db.getNextTrackId();
+
+        const ctx = new AudioContext();
+        const audio = await ctx.decodeAudioData(buffer.slice(0));
+        const duration = Math.round(audio.duration * 1000);
+
+        const track = await db.writeFile(id, buffer, duration, audio.length, name);
+        return track;
+    } catch (e) {
+        console.error(e);
+    }
 };

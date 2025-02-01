@@ -8,6 +8,8 @@ https://github.com/brianpipa/jsymphonic
 
 https://github.com/Zazama/node-id3
 
+https://github.com/G3VV/Yank
+
 ## Implementation Status
 
 ### Database Formats
@@ -17,17 +19,19 @@ https://github.com/Zazama/node-id3
 
 ### Tracks
 
+- [x] Add
+- [x] Drag-Drop
 - [x] Reorder
 - [x] Rename
-- [x] Upload
 - [x] Delete
 - [x] Download
 
 ### Folders
 
+- [x] Create
 - [x] Add
+- [x] Drag-Drop
 - [x] Reorder
 - [x] Rename
-- [x] Upload
 - [x] Delete
 - [ ] Download (jszip would add ~100kb)

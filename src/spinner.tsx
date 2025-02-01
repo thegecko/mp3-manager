@@ -35,7 +35,7 @@ export const Spinner = () => {
             {busy &&
                 <div style={style}>
                     <div style={loader}></div>
-                    <div>Saving...</div>
+                    <div>Working...</div>
                 </div>
             }
         </>

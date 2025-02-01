@@ -5,7 +5,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { FileContainer } from './file-container';
 import { File } from './file';
 import { AddFolder } from './add-folder';
-import { NEW_ID, Card, buildFolders, getCards, getFiles } from './util';
+import { NEW_ID, Card, buildFolders, getCards, getFiles, createFile, MP3_EXTENSION } from './util';
 import { useBusy, useDb, useFolders } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
@@ -25,7 +25,7 @@ export const FileManager = () => {
     const { folders, updateFolders } = useFolders();
     const { updateBusy } = useBusy();
     const [cards, setCards] = useState([] as Card[]);
-    const [collapsedFolder, setcollapsedFolder] = useState(undefined as number | undefined);
+    const [collapsedFolder, setCollapsedFolder] = useState(undefined as number | undefined);
 
     // Container handlers
     const onNew = useCallback(() => {
@@ -52,7 +52,7 @@ export const FileManager = () => {
 
     // File handlers
     const onHover = (dragRef?: Card): void => {
-        setcollapsedFolder(dragRef?.type === 'folder' ? dragRef.id : undefined);
+        setCollapsedFolder(dragRef?.type === 'folder' ? dragRef.id : undefined);
     };
 
     let requestedFrame: number | undefined;
@@ -105,16 +105,20 @@ export const FileManager = () => {
     }
 
     const onDrop = async (card: Card | DataTransfer) => {
-        const newFolders = new Map<string, Track[]>();
-        const newTracks: Track[] = [];
+        if (!db) {
+            throw new Error('No database');
+        }
 
         try {
             updateBusy(true);
+
+            const newFolders = new Map<string, Track[]>();
+            const newTracks: Track[] = [];
             if (isDataTransfer(card)) {
                 const files = await getFiles(card);
                 for (const { file, folder } of files) {
                     const buffer = await file.arrayBuffer();
-                    const track = await createFile(buffer, file.name);
+                    const track = await createFile(db, buffer, file.name);
                     if (track) {
                         if (folder) {
                             newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
@@ -187,7 +191,7 @@ export const FileManager = () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = track.file || `${track.name}.mp3`;
+            a.download = track.file || `${track.name}.${MP3_EXTENSION}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -196,6 +200,46 @@ export const FileManager = () => {
     };
 
     const onAdd = async (folderRef: Card) => {
+        if (!db) {
+            throw new Error('No database');
+        }
+
+        const files = await window.showOpenFilePicker({ startIn: 'music', types: [{ accept: { 'audio/mpeg': `.${MP3_EXTENSION}` } }], multiple: true });
+        if (files) {
+            try {
+                updateBusy(true);
+
+                const tracks: Track[] = [];
+                for (const handle of files) {
+                    const file = await handle.getFile();
+                    const buffer = await file.arrayBuffer();
+                    const track = await createFile(db, buffer, file.name);
+
+                    if (track) {
+                        tracks.push(track);
+                    }
+                }
+
+                if (tracks.length > 0) {
+                    let insertIndex = cards.indexOf(folderRef) + 1;
+                    if (insertIndex >= 0) {
+                        const newCards = [...cards];
+                        newCards.splice(insertIndex, 0, {
+                            id: NEW_ID,
+                            type: 'new',
+                            name: `add track(s)`
+                        });
+                        const folders = buildFolders(newCards, { newTracks: tracks });
+                        updateFolders(folders);
+                    }
+                }
+            } finally {
+                updateBusy(false);
+            }
+        }
+    };
+
+    const onYank = async (folderRef: Card) => {
         if (!db) {
             throw new Error('No database');
         }
@@ -209,9 +253,11 @@ export const FileManager = () => {
         if (trackId) {
             try {
                 updateBusy(true);
-                const response = await fetch(`https://yank.g3v.co.uk/track/${trackId}`);
+                const yankUrl = `https://yank.g3v.co.uk/track/${trackId}`;
+                console.log(yankUrl);
+                const response = await fetch(yankUrl);
                 const buffer = await response.arrayBuffer();
-                const track = await createFile(buffer);
+                const track = await createFile(db, buffer);
 
                 if (track) {
                     let insertIndex = cards.indexOf(folderRef) + 1;
@@ -227,30 +273,10 @@ export const FileManager = () => {
                     }
                 }
             } catch (e) {
-                console.error(e);
+                alert(e);
             } finally {
                 updateBusy(false);
             }
-        }
-    };
-
-    // Support functions
-    const createFile = async (buffer: ArrayBuffer, name?: string): Promise<Track | undefined> => {
-        if (!db) {
-            throw new Error('No database');
-        }
-
-        try {
-            const id = await db.getNextTrackId();
-
-            const ctx = new AudioContext();
-            const audio = await ctx.decodeAudioData(buffer.slice(0));
-            const duration = Math.round(audio.duration * 1000);
-
-            const track = await db.writeFile(id, buffer, duration, audio.length, name);
-            return track;
-        } catch (e) {
-            console.error(e);
         }
     };
 
@@ -287,6 +313,7 @@ export const FileManager = () => {
                 onRename={onRename}
                 onDownload={onDownload}
                 onAdd={onAdd}
+                onYank={onYank}
             />
         );
 

@@ -93,13 +93,12 @@ export const FileManager = () => {
             }
         }
 
+        const newCards = [...cards];
+        const deletedCards = newCards.splice(removeIndex, removeCount);
+        newCards.splice(insertIndex, 0, ...deletedCards);
+
         requestedFrame = requestAnimationFrame(() => {
-            setCards(cards => {
-                const newCards = [...cards];
-                const deletedCards = newCards.splice(removeIndex, removeCount);
-                newCards.splice(insertIndex, 0, ...deletedCards);
-                return newCards;
-            });
+            setCards(newCards);
             requestedFrame = undefined;
         });
     }

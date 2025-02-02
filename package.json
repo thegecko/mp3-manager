@@ -1,7 +1,7 @@
 {
   "name": "mp3-manager",
   "description": "mp3 Manager",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "thegecko",
   "license": "MIT",
   "type": "module",

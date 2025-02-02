@@ -52,7 +52,7 @@ jobs:
 
   release:
     needs: build
-    name: create Release
+    name: create release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -64,4 +64,4 @@ jobs:
           path: artifacts
       - uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
         with:
-          files: artifacts/*/*.htmls
+          files: artifacts/*/*.html

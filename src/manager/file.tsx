@@ -101,7 +101,7 @@ export const File = memo((props: FileProps) => {
 					<button
 						title='Yank Track (experimental)'
 						onClick={() => onYank(id)}>
-						🎩
+						🎵
 					</button>
 				}
 				{type !== 'folder' &&

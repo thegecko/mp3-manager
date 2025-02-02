@@ -70,7 +70,7 @@ export const File = memo((props: FileProps) => {
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
 	const marginLeft = type !== 'folder' ? '20px' : '0';
-	const paddingLeft = type !== 'folder' ? '50px' : '100px';
+	const paddingLeft = type !== 'folder' ? '40px' : '100px';
 
 	return (
 		<div ref={ref} style={{...style, background, opacity, marginLeft, paddingLeft }} data-handler-id={handlerId}>	
@@ -99,9 +99,9 @@ export const File = memo((props: FileProps) => {
 				}
 				{type === 'folder' &&
 					<button
-						title='Yank Track'
+						title='Yank Track (experimental)'
 						onClick={() => onYank(id)}>
-						🎵
+						🎩
 					</button>
 				}
 				{type !== 'folder' &&

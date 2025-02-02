@@ -7,7 +7,7 @@
 //  Generation 5 (NW-E00x)
 //  Generation 6 (NW-S20x)
 //  Generation 7 (NW-E01x, NW-S60x/S70x, NW-S71x, NW-A80x, NW-A91x)
-//  Vaio (VGF-AP1)
+//  Vaio (VGF-AP1)?
 
 import { Database, Folder, Track } from './database-detector';
 

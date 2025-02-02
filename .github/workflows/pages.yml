@@ -26,19 +26,6 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist/
-      - name: Deploy to gh-pages
-        run: |
-          git config --global user.name thegecko
-          git config --global user.email github@thegecko.org
-          git add .
-          git add --force dist
-          git stash save
-          git checkout gh-pages
-          git pull
-          git merge main --no-commit -X theirs
-          git checkout stash -- .
-          git commit --allow-empty --message "Automatic Deployment"
-          git push
 
   deploy:
     if: ${{ github.event_name == 'push' }}

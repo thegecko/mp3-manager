@@ -57,7 +57,7 @@ Once opened, select the drive you want to manage and everything should be self e
 ### Database Formats
 
 - [x] ESYS
-- [ ] OMGAUDIO (PRs welcome!)
+- [x] OMGAUDIO
 
 ### Tracks
 
@@ -77,6 +77,10 @@ Once opened, select the drive you want to manage and everything should be self e
 - [x] Rename
 - [x] Delete
 - [ ] Download (needs zip spport, jszip would add ~100kb)
+
+### Other
+
+- [ ] Format Device (need to open via WebUSB to get serialNumber for ESYS or read scramble key for OMGAUDIO and create folders)
 
 ## Credits & Prior Art
 

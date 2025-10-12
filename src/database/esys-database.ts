@@ -220,7 +220,7 @@ export class EsysDatabase implements Database {
         return false;
     }
 
-    public async writeFileHandle(fileHandle: FileSystemFileHandle, data: ArrayBuffer): Promise<boolean> {
+    protected async writeFileHandle(fileHandle: FileSystemFileHandle, data: ArrayBuffer): Promise<boolean> {
         try {
             const file = await fileHandle.createWritable({ keepExistingData: false });
             await file.write(data);

@@ -24,12 +24,12 @@ export interface Track {
 }
 
 export const detectDatabase = async (fileSystem: FileSystemDirectoryHandle): Promise<Database> => {
-    if (await isEsys(fileSystem)) {
-        return EsysDatabase.create(fileSystem);
-    }
-
     if (await isOmg(fileSystem)) {
         return OmgDatabase.create(fileSystem);
+    }
+
+    if (await isEsys(fileSystem)) {
+        return EsysDatabase.create(fileSystem);
     }
 
     throw new Error('Not a valid mp3 folder');

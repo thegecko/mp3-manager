@@ -46,7 +46,7 @@ https://github.com/thegecko/mp3-manager/releases
 
 Once opened, select the drive you want to manage and everything should be self explanatory.
 
-![Screenshot 2025-02-02 at 19 53 51](https://github.com/user-attachments/assets/8260f292-efff-4a7e-a48b-cb3d467caf9c)
+<img width="864" height="873" alt="Screenshot 2026-10-18 at 00 19 19" src="https://github.com/user-attachments/assets/20b23376-84d8-47fa-bada-c1666bcd98d0" />
 
 ## Implementation Status
 

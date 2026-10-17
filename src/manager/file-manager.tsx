@@ -1,7 +1,6 @@
 
 import { useCallback, useMemo, useState } from 'preact/hooks';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
+import { DndRoot } from '../dnd/root';
 import { FileContainer } from './file-container';
 import { File } from './file';
 import { AddFolder } from './add-folder';
@@ -337,11 +336,11 @@ export const FileManager = () => {
 
     return (
         <>
-            <DndProvider backend={HTML5Backend}>
+            <DndRoot>
                 <FileContainer onNew={onNew} clearNew={clearNew}>
                     {cardNodes}
                 </FileContainer>
-            </DndProvider>
+            </DndRoot>
             <div style={footerStyle}>
                 <AddFolder />
                 <DriveSelect />

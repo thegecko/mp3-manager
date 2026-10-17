@@ -1,12 +1,13 @@
 import { useRef } from 'preact/hooks'
 import { memo } from 'preact/compat'
-import { useDrag, useDrop } from 'react-dnd'
-import { NativeTypes } from 'react-dnd-html5-backend'
+import { useDrag } from '../dnd/use-drag'
+import { useDrop } from '../dnd/use-drop'
+import { NativeTypes } from '../dnd/html5-backend'
 import { actionButtonStyle, actionsStyle, artistStyle, dangerButtonStyle, fileStyle, titleWrapStyle } from '../styles'
 
 const ItemTypes = {
-	FILE: 'file',
-}
+	FILE: 'file'
+};
 
 export interface FileProps {
 	id: any;
@@ -43,15 +44,15 @@ export const File = memo((props: FileProps) => {
 		accept: [ItemTypes.FILE, NativeTypes.FILE],
 		hover({ id: dragId }: { id: any; type: string }) {
 			onHover(dragId);
+			// Allow folders to only drag over other folders
 			if (dragId && id && dragId !== id) {
-				// Allow folders to only drag over other folders
 				if (dragId.type !== 'folder' || id.type === 'folder') {
-					onMove(dragId, id)
+					onMove(dragId, id);
 				}
 			}
 		},
 		drop(item: any) {
-			onDrop(item)
+			onDrop(item);
 		}
 	});
 

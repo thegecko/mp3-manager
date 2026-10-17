@@ -1,8 +1,7 @@
 import { useRef } from 'preact/hooks'
 import type { ComponentChild } from 'preact'
 import type { PropsWithChildren } from 'preact/compat'
-import { useDrop } from 'react-dnd'
-import { NativeTypes } from 'react-dnd-html5-backend'
+import { useFileContainerDrop } from '../dnd/file-container-drop'
 import { emptyStyle } from '../styles'
 import { containerStyle } from '../styles'
 
@@ -14,20 +13,7 @@ export interface FileContainerProps {
 export const FileContainer = (props: PropsWithChildren<FileContainerProps>) => {
 	const { onNew, clearNew } = props;
 	const ref = useRef(null)
-
-	const [, connectDrop] = useDrop(() => ({
-		accept: NativeTypes.FILE,
-		hover(item: any, monitor) {
-			if (!item.id && monitor.getItemType() === NativeTypes.FILE) {
-				item.id = onNew();
-			}
-		},
-		collect: (monitor) => {
-			if (!monitor.getItemType()) {
-				clearNew();
-			}
-		}
-	}), [props]);
+	const connectDrop = useFileContainerDrop({ onNew, clearNew });
 
 	connectDrop(ref);
 	const hasFiles = (props.children as ComponentChild[]).length > 0;

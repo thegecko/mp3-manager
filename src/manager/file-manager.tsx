@@ -5,10 +5,11 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { FileContainer } from './file-container';
 import { File } from './file';
 import { AddFolder } from './add-folder';
-import { NEW_ID, Card, buildFolders, getCards, getFiles, createFile, MP3_EXTENSION } from './util';
+import { NEW_ID, Card, buildFolders, getCards, getFiles, createFile, createZip, MP3_EXTENSION } from './util';
 import { useBusy, useDb, useFolders } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
+import { Init } from '../init';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
 
@@ -116,8 +117,7 @@ export const FileManager = () => {
             if (isDataTransfer(card)) {
                 const files = await getFiles(card);
                 for (const { file, folder } of files) {
-                    const buffer = await file.arrayBuffer();
-                    const track = await createFile(db, buffer, file.name);
+                    const track = await createFile(db, file);
                     if (track) {
                         if (folder) {
                             newFolders.set(folder, [...(newFolders.get(folder) || []), track]);
@@ -139,18 +139,24 @@ export const FileManager = () => {
             throw new Error('No database');
         }
 
-        // Delete files
-        let deletingTracks = false;
-        for (const card of cards) {
-            if (card.type === 'folder') {
-                deletingTracks = toDelete.id === card.id;
-            } else if (deletingTracks || toDelete.id === card.id) {
-                await db.deleteFile(card.id);
-            }
-        }
+        try {
+            updateBusy(true);
 
-        const folders = buildFolders(cards, { deleteId: toDelete.id });
-        updateFolders(folders);
+            // Delete files
+            let deletingTracks = false;
+            for (const card of cards) {
+                if (card.type === 'folder') {
+                    deletingTracks = toDelete.id === card.id;
+                } else if (deletingTracks || toDelete.id === card.id) {
+                    await db.deleteFile(card.id);
+                }
+            }
+
+            const folders = buildFolders(cards, { deleteId: toDelete.id });
+            updateFolders(folders);
+        } finally {
+            updateBusy(false);
+        }
     };
 
     const onRename = async (toRename: Card) => {
@@ -179,22 +185,41 @@ export const FileManager = () => {
         updateFolders(folders);
     };
 
-    const onDownload = async (track: Card) => {
+    const onDownload = async (card: Card) => {
         if (!db) {
             throw new Error('No database');
         }
 
-        const buffer = await db.readFile(track.id);
-        if (buffer) {
-            const blob = new Blob([buffer]);
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = track.file || `${track.name}.${MP3_EXTENSION}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+        try {
+            updateBusy(true);
+
+            let file: File | undefined;
+            if (card.type === 'folder') {
+                const tracks: Card[] = [];
+                const start = cards.indexOf(card) + 1;
+                for (let i = start; i < cards.length && cards[i].type !== 'folder'; i++) {
+                    if (cards[i].type === 'track') {
+                        tracks.push(cards[i]);
+                    }
+                }
+                const files = (await Promise.all(tracks.map(track => db.streamFile(track.id)))).filter(file => !!file) as File[];
+                file = await createZip(card.name, files);
+            } else {
+                file = await db.streamFile(card.id);
+            }
+
+            if (file) {
+                const url = URL.createObjectURL(file);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = file.name || card.file || `${card.name}.${MP3_EXTENSION}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        } finally {
+            updateBusy(false);
         }
     };
 
@@ -211,8 +236,7 @@ export const FileManager = () => {
                 const tracks: Track[] = [];
                 for (const handle of files) {
                     const file = await handle.getFile();
-                    const buffer = await file.arrayBuffer();
-                    const track = await createFile(db, buffer, file.name);
+                    const track = await createFile(db, file);
 
                     if (track) {
                         tracks.push(track);
@@ -255,8 +279,9 @@ export const FileManager = () => {
                 const yankUrl = `https://yank.g3v.co.uk/track/${trackId}`;
                 console.log(yankUrl);
                 const response = await fetch(yankUrl);
-                const buffer = await response.arrayBuffer();
-                const track = await createFile(db, buffer);
+                const blob = await response.blob();
+                const file = new File([blob], `${trackId}.${MP3_EXTENSION}`, { type: 'audio/mpeg' });
+                const track = await createFile(db, file);
 
                 if (track) {
                     let insertIndex = cards.indexOf(folderRef) + 1;
@@ -325,6 +350,7 @@ export const FileManager = () => {
             </DndProvider>
             <div style={footerStyle}>
                 <AddFolder />
+                <Init />
                 <DriveSelect />
             </div>
         </>

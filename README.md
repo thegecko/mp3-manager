@@ -18,23 +18,19 @@ This approach means:
   - Renaming and deleting
   - Downloading
 
-## Hardware Support
+## Theoretical Hardware Support (mainly untested)
 
 ### ESYS
 - Generation 0 (NW-MSx, NW-Ex, NW-S4, NW-E8P, NW-MSxx, NW-HD1, NW-HD2)
 - Generation 1 (NW-Sxx, NW-Exx except NW-E99)
-- Generation 2 (NW-E99)
+- Generation 2 (NW-E99) - **Tested**
 
-### OMGAUDIO (not yet implemented)
+### OMGAUDIO
 - Generation 3 (NW-HD3, NW-HD5, NW-E10x/E2xx/E3xx/E4xx/E5xx)
 - Generation 4 (NW-A1000, NW-A1200, NW-A3000, NW-A60x)
 - Generation 5 (NW-E00x)
 - Generation 6 (NW-S20x)
 - Generation 7 (NW-E01x, NW-S60x/S70x, NW-S71x, NW-A80x, NW-A91x)
-
-I haven't yet implemented OMGAUDIO support due to not having relevant hardware. Implementation would be possible in 2 ways:
-- Someone with access to an OMGAUDIO device opening a PR (the template to complete is here: [omg-database.ts](https://github.com/thegecko/mp3-manager/blob/main/src/database/omg-database.ts))
-- Someone donating an OMGAUDIO compatible device for me to test
 
 ## Usage
 
@@ -76,11 +72,16 @@ Once opened, select the drive you want to manage and everything should be self e
 - [x] Reorder
 - [x] Rename
 - [x] Delete
-- [ ] Download (needs zip spport, jszip would add ~100kb)
+- [x] Download
 
 ### Other
 
-- [ ] Format Device (need to open via WebUSB to get serialNumber for ESYS or read scramble key for OMGAUDIO and create folders)
+- [x] Create init file (requires browser with WebUSB support)
+
+## Troubleshooting Tips
+
+- On newer versions of Windows, there is already a driver for these devices you can install:
+https://www.youtube.com/watch?v=8RfUjqAuWiw
 
 ## Credits & Prior Art
 

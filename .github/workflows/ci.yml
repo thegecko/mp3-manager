@@ -23,6 +23,8 @@ jobs:
           node-version: 20.x
       - name: Build
         run: npm install
+      - name: Test
+        run: npm test
       - name: Upload GitHub Pages artifacts
         id: deployment
         uses: actions/upload-pages-artifact@v3

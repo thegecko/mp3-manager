@@ -6,8 +6,9 @@
 //  Generation 1 (NW-Sxx, NW-Exx except NW-E99)
 //  Generation 2 (NW-E99)
 
-import { addTags, deleteTags, readTags } from '../id3';
+import { addTags, readTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
+import { transferUsbStorageCommand } from '../usb-storage';
 
 const ROOT_FOLDER = 'ESYS';
 const DATA_FOLDER = 'NW-MP3';
@@ -16,13 +17,45 @@ const BACKUP_FILE = 'PBLIST0.DAT';
 const DB_HEADER_TEXT = 'WMPLESYS';
 const TRACK_HEADER_TEXT = 'WMMP';
 const HEADER_SIZE = 32;
+const UNKNOWN_HEADER_OFFSET = 16;
+const TAG_READ_SIZE = 128 * 1024;
+
+const FAT_SERIAL_OFFSET = 0x27;
+const READ_SECTOR_SIZE = 512;
+
+const readFirstUsbStorageSector = async (device: USBDevice): Promise<Uint8Array> => {
+    const tag = Date.now() & 0xffffffff;
+    const cbw = new Uint8Array(31);
+    const view = new DataView(cbw.buffer);
+
+    view.setUint32(0, 0x43425355, true);
+    view.setUint32(4, tag, true);
+    view.setUint32(8, READ_SECTOR_SIZE, true);
+    view.setUint8(12, 0x80);
+    view.setUint8(14, 10);
+    cbw[15] = 0x28;
+    cbw[22] = 1;
+
+    return transferUsbStorageCommand(device, cbw, READ_SECTOR_SIZE);
+};
+
+const createFatTimestamp = (date: Date): number => {
+    const year = Math.max(1980, date.getFullYear()) - 1980;
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = Math.floor(date.getSeconds() / 2);
+
+    return (year << 25) | (month << 21) | (day << 16) | (hours << 11) | (minutes << 5) | seconds;
+};
 
 export const isEsys = async (fileSystem: FileSystemDirectoryHandle): Promise<boolean> => {
     // Check for ESYS folder
     try {
         await fileSystem.getDirectoryHandle(ROOT_FOLDER, { create: false });
     } catch (e) {
-        // Direcory not found
+        // Directory not found
         return false;
     }
 
@@ -34,6 +67,30 @@ const roundUp = (input: number, multiple = 16) => Math.ceil(input / multiple) * 
 const getFilename = (id: number) => `MP${id.toString(16).padStart(4, '0').toUpperCase()}.DAT`;
 
 export class EsysDatabase implements Database {
+
+    public async createInitFile(device: USBDevice): Promise<File> {
+        const data = await readFirstUsbStorageSector(device);
+        const serialNumber = readFatSerialNumber(data);
+        const timestamp = createFatTimestamp(new Date());
+        const buffer = new ArrayBuffer(HEADER_SIZE);
+        const view = new DataView(buffer);
+        const dataArray = new Uint8Array(buffer);
+
+        dataArray.set(new TextEncoder().encode(DB_HEADER_TEXT), 0);
+        view.setUint32(8, timestamp);
+        view.setUint32(12, serialNumber);
+        view.setUint32(UNKNOWN_HEADER_OFFSET, 0);
+        view.setUint32(20, 0);
+        view.setUint32(24, 0);
+
+        let checksum = view.getUint32(0);
+        for (let i = 4; i < 28; i += 4) {
+            checksum ^= view.getUint32(i);
+        }
+        view.setUint32(28, checksum);
+
+        return new File([buffer], DB_FILE);
+    }
 
     public static async create(fileSystem: FileSystemDirectoryHandle): Promise<Database> {
         if (!isEsys(fileSystem)) {
@@ -52,6 +109,7 @@ export class EsysDatabase implements Database {
     protected view: DataView;
     protected timestamp: number;
     protected serialNumber: number;
+    protected unknownHeader: number;
     protected folderCount: number;
     protected trackCount: number;
     protected fileOffset: number;
@@ -67,7 +125,7 @@ export class EsysDatabase implements Database {
         this.checkHeader();
         this.timestamp = this.view.getUint32(8);
         this.serialNumber = this.view.getUint32(12);
-        // 4 byte unknown - not implemented
+        this.unknownHeader = this.view.getUint32(UNKNOWN_HEADER_OFFSET);
         this.folderCount = this.view.getUint32(20);
         this.trackCount = this.view.getUint32(24);
         this.fileOffset = HEADER_SIZE + (this.folderCount * 256);
@@ -166,43 +224,38 @@ export class EsysDatabase implements Database {
     }
 
     public async readFile(id: number): Promise<ArrayBuffer | undefined> {
+        const file = await this.streamFile(id);
+        return file?.arrayBuffer();
+    }
+
+    public async streamFile(id: number): Promise<File | undefined> {
         try {
             const fileHandle = await this.dataFolder.getFileHandle(getFilename(id));
             const file = await fileHandle.getFile();
-            const data = await file.arrayBuffer();
-            const decoded = this.decodeFile(id, data);
-            // Add id3 tags
             const track = this.tracks.get(id);
-            if (track) {
-                const tagged = addTags(decoded, {
-                    encodedBy: 'mp3manager',
-                    title: track.name,
-                    artist: track.artist
-                });
-                return tagged;
-            }
-            return decoded;
+            const stream = this.decodeStream(id, file);
+            const tagged = track ? this.prependTags(stream, track) : stream;
+            const blob = await new Response(tagged).blob();
+
+            return new File([blob], track?.file || `${id}.mp3`, { type: 'audio/mpeg' });
         } catch (e) {
             console.error(e);
         }
     }
 
-    public async writeFile(id: number, data: ArrayBuffer, duration: number, frames: number, fileName?: string): Promise<Track | undefined> {
+    public async writeFile(id: number, file: File, duration: number, frames: number): Promise<Track | undefined> {
         try {
-            // Do this before removing id3 frames!
-            const tags = await readTags(data);
-            // Remove all id3 frames
-            const stripped = deleteTags(data);
-            const encoded = this.encodeFile(id, stripped, duration, frames);
+            const tags = await readTags(await file.slice(0, TAG_READ_SIZE).arrayBuffer());
+            const tagSize = await this.getId3Size(file);
             const fileHandle = await this.dataFolder.getFileHandle(getFilename(id), { create: true });
-            await this.writeFileHandle(fileHandle, encoded);
+            await this.writeAudioFileHandle(fileHandle, id, file, tagSize, duration, frames);
             const name = tags.title || 'unknown title';
             const artist = tags.artist || 'unknown artist';
             return {
                 id,
                 name,
                 artist,
-                file: fileName || `${artist} - ${name}.mp3`
+                file: file.name || `${artist} - ${name}.mp3`
             };
         } catch (e) {
             console.error(e);
@@ -211,7 +264,39 @@ export class EsysDatabase implements Database {
 
     public async deleteFile(id: number): Promise<boolean> {
         try {
-            await this.dataFolder.removeEntry(getFilename(id));
+            try {
+                await this.dataFolder.removeEntry(getFilename(id));
+            } catch (e) {
+                await this.dataFolder.removeEntry(getFilename(id).toLowerCase());
+            }
+            return true;
+        } catch (e) {
+            console.error(e);
+        }
+
+        return false;
+    }
+
+    protected async writeAudioFileHandle(fileHandle: FileSystemFileHandle, id: number, file: File, tagSize: number, duration: number, frames: number): Promise<boolean> {
+        try {
+            const writable = await fileHandle.createWritable({ keepExistingData: false });
+            await writable.write(this.createTrackHeader(file.size - tagSize, duration, frames));
+
+            const reader = file
+                .slice(tagSize)
+                .stream()
+                .pipeThrough(this.createCipherTransform(id))
+                .getReader();
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                await writable.write(value);
+            }
+
+            await writable.close();
             return true;
         } catch (e) {
             console.error(e);
@@ -258,7 +343,7 @@ export class EsysDatabase implements Database {
 
         this.view.setUint32(8, this.timestamp);
         this.view.setUint32(12, this.serialNumber);
-        // 4 byte unknown - not implemented
+        this.view.setUint32(UNKNOWN_HEADER_OFFSET, this.unknownHeader);
         this.view.setUint32(20, this.folderCount);
         this.view.setUint32(24, this.trackCount);
 
@@ -311,7 +396,7 @@ export class EsysDatabase implements Database {
     protected getText(offset: number, length: number): string {
         let terminator = 0;
 
-        for (let j = 0; j < length; j++) {
+        for (let j = 0; j < length; j += 2) {
             if (this.view.getUint16(offset + j) === 0) {
                 terminator = j;
                 break;
@@ -322,24 +407,19 @@ export class EsysDatabase implements Database {
         return new TextDecoder('UTF-16BE').decode(bytes).trim();
     }
 
-    protected setText(offset: number, text: string): void {
-        for (let i = 0; i < text.length; i++) {
+    protected setText(offset: number, text: string, length = 256): void {
+        for (let i = 0; i < length; i += 2) {
+            this.view.setUint16(offset + i, 0);
+        }
+
+        const maxLength = Math.floor(length / 2) - 1;
+        for (let i = 0; i < Math.min(text.length, maxLength); i++) {
             this.view.setUint16(offset + (i * 2), text.charCodeAt(i));
         }
     }
 
-    protected encodeFile(id: number, buffer: ArrayBuffer, duration: number, frames: number): ArrayBuffer {
-        // Create and substitute cypher
-        const cypher = this.createCypher(id);
-        const substituted = new Uint8Array(buffer);
-        for (let i = 0; i < substituted.length; i++) {
-            const byte = substituted[i];
-            substituted[i] = cypher[byte];
-        }
-
-        // New buffer
-        const encoded = new Uint8Array(HEADER_SIZE + substituted.byteLength);
-        encoded.set(substituted, HEADER_SIZE);
+    protected createTrackHeader(dataLength: number, duration: number, frames: number): ArrayBuffer {
+        const encoded = new Uint8Array(HEADER_SIZE);
         const view = new DataView(encoded.buffer);
 
         // Add header
@@ -348,7 +428,7 @@ export class EsysDatabase implements Database {
         encoded.set(text, 0);
 
         // 4 byte longword - total file size (bytes)
-        view.setUint32(4, encoded.byteLength);
+        view.setUint32(4, HEADER_SIZE + dataLength);
         // 4 byte longword - duration (ms)
         view.setUint32(8, duration);
         // 4 byte longword - frame count
@@ -364,19 +444,64 @@ export class EsysDatabase implements Database {
         return encoded.buffer;
     }
 
-    protected decodeFile(id: number, buffer: ArrayBuffer): ArrayBuffer {
-        // Remove header
-        const ar = new Uint8Array(buffer);
-        const substituted = ar.slice(HEADER_SIZE);
+    protected decodeStream(id: number, file: File): ReadableStream<Uint8Array> {
+        return file
+            .slice(HEADER_SIZE)
+            .stream()
+            .pipeThrough(this.createCipherTransform(id));
+    }
 
-        // Create and substitute cypher
+    protected prependTags(stream: ReadableStream<Uint8Array>, track: Track): ReadableStream<Uint8Array> {
+        const tag = new Uint8Array(addTags(new ArrayBuffer(0), {
+            encodedBy: 'mp3manager',
+            title: track.name,
+            artist: track.artist
+        }));
+
+        return new ReadableStream<Uint8Array>({
+            start(controller) {
+                controller.enqueue(tag);
+                const reader = stream.getReader();
+
+                const pump = (): Promise<void> => reader.read().then(({ value, done }) => {
+                    if (done) {
+                        controller.close();
+                        return;
+                    }
+                    controller.enqueue(value);
+                    return pump();
+                });
+
+                return pump();
+            }
+        });
+    }
+
+    protected createCipherTransform(id: number): TransformStream<Uint8Array, Uint8Array> {
         const cypher = this.createCypher(id);
-        for (let i = 0; i < substituted.length; i++) {
-            const byte = substituted[i];
-            substituted[i] = cypher[byte];
+        return new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+                const transformed = new Uint8Array(chunk.byteLength);
+                for (let i = 0; i < chunk.byteLength; i++) {
+                    transformed[i] = cypher[chunk[i]];
+                }
+                controller.enqueue(transformed);
+            }
+        });
+    }
+
+    protected async getId3Size(file: File): Promise<number> {
+        const header = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+        if (header.length < 10 || header[0] !== 0x49 || header[1] !== 0x44 || header[2] !== 0x33) {
+            return 0;
         }
 
-        return substituted;
+        return 10 + (
+            (header[6] << 21) +
+            (header[7] << 14) +
+            (header[8] << 7) +
+            header[9]
+        );
     }
 
     protected createCypher(trackno: number): Uint8Array {
@@ -426,3 +551,8 @@ export class EsysDatabase implements Database {
         return conv;
     }
 }
+
+const readFatSerialNumber = (sector: Uint8Array): number => {
+    const view = new DataView(sector.buffer, sector.byteOffset, sector.byteLength);
+    return view.getUint32(FAT_SERIAL_OFFSET);
+};

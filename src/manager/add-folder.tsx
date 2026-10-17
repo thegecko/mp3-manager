@@ -31,8 +31,7 @@ export const AddFolder = () => {
                 for await (const [ name, entry ] of folder.entries()) {
                     if (isMp3File(entry)) {
                         const file = await entry.getFile();
-                        const buffer = await file.arrayBuffer();
-                        const track = await createFile(db, buffer, name);
+                        const track = await createFile(db, file);
                         if (track) {
                             tracks.push(track);
                         }

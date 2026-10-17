@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks';
 import { detectDatabase } from './database/database-detector';
-import { useDb, useFs } from './context';
+import { useBusy, useDb, useFs } from './context';
 
 const style = {
     color: 'white',
@@ -15,6 +15,7 @@ const DRIVE_TIMEOUT = 2000;
 export const DriveSelect = () => {
     const { db, updateDb } = useDb();
     const { fs, updateFs } = useFs();
+    const { updateBusy } = useBusy();
 
     useEffect(() => {
         let timeout: number | undefined;
@@ -36,11 +37,14 @@ export const DriveSelect = () => {
         const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
         if (fileSystem) {
             try {
+                updateBusy(true);
                 const database = await detectDatabase(fileSystem);
                 updateFs(fileSystem);
                 updateDb(database);
             } catch (e) {
                 alert(e);
+            } finally {
+                updateBusy(false);
             }
         }
     };

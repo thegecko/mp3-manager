@@ -31,32 +31,32 @@ export const AddFolder = () => {
                     }
                 }
                 folders.unshift(newFolder(folder.name, tracks));
-                updateFolders(folders);
+                await updateFolders(folders);
             } finally {
                 updateBusy(false);
             }
         }
     };
 
-    const onCreate = () => {
+    const onCreate = async () => {
         const name = prompt('Enter the name of the folder', 'New Folder');
         if (!name) {
             return;
         }
 
         folders.unshift(newFolder(name, []));
-        updateFolders(folders);
+        await updateFolders(folders);
     };
 
     return (
         <>
             <button style={primaryButtonStyle}
                 onClick={onAdd}>
-                Add Folder
+                Upload Folder
             </button>
             <button style={primaryButtonStyle}
                 onClick={onCreate}>
-                Create Folder
+                New Folder
             </button>
         </>
     );

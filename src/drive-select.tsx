@@ -58,7 +58,7 @@ export const DriveSelect = () => {
             }
             <button style={primaryButtonStyle}
                 onClick={onConnect}>
-                Select Drive
+                Select Device Drive
             </button>
             <Init />
             {fs && <span style={statusPillStyle}>Connected: {fs.name}</span>}

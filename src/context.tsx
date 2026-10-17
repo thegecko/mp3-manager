@@ -10,7 +10,7 @@ export const DbContext = createContext({
 
 export const FoldersContext = createContext({
     folders: [] as Folder[],
-    updateFolders: (folders: Folder[]) => { }
+    updateFolders: async (folders: Folder[]) => { }
 });
 
 export const FileSystemContext = createContext({
@@ -39,7 +39,7 @@ export const ContextProvider = (props: PropsWithChildren) => {
     };
 
     const updateDb = async (db?: Database) => {
-        busyWrapper(async () => {
+        await busyWrapper(async () => {
             setDb(db);
             const folders = db ? await db.getFolders() : [];
             setFolders(folders);
@@ -47,7 +47,7 @@ export const ContextProvider = (props: PropsWithChildren) => {
     };
 
     const updateFolders = async (folders: Folder[]) => {
-        busyWrapper(async () => {
+        await busyWrapper(async () => {
             if (db) {
                 await db.setFolders(folders);
                 folders = await db.getFolders();

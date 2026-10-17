@@ -42,8 +42,8 @@ export const statusPillStyle: JSX.CSSProperties = {
 
 export const footerStyle: JSX.CSSProperties = {
     alignItems: 'center',
-    background: 'rgba(255,255,255,.9)',
-    borderTop: '1px solid #dbe7ef',
+    background: 'rgba(224,237,246,.95)',
+    borderTop: '1px solid #c3d7e5',
     boxShadow: '0 -8px 22px rgba(36,48,66,.06)',
     display: 'flex',
     height: '50px',

@@ -6,6 +6,11 @@ import { viteSingleFile } from "vite-plugin-singlefile"
 export default defineConfig({
     build: {
         minify: 'terser',
+        rollupOptions: {
+            output: {
+                assetFileNames: () => '[name][extname]'
+            }
+        },
         terserOptions: {
             compress: {
                 drop_console: true,

@@ -10,7 +10,7 @@ import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
 import { footerStyle } from '../styles';
 
-const TRACK_LABEL = 'Add Track(s)';
+const TRACK_LABEL = 'Upload Track(s)';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
 
@@ -121,7 +121,7 @@ export const FileManager = () => {
                 }
             }
             const folders = buildFolders(cards, { newFolders, newTracks });
-            updateFolders(folders);
+            await updateFolders(folders);
         } finally {
             updateBusy(false);
         }
@@ -146,7 +146,7 @@ export const FileManager = () => {
             }
 
             const folders = buildFolders(cards, { deleteId: toDelete.id });
-            updateFolders(folders);
+            await updateFolders(folders);
         } finally {
             updateBusy(false);
         }
@@ -175,7 +175,7 @@ export const FileManager = () => {
         }
 
         const folders = buildFolders(newCards);
-        updateFolders(folders);
+        await updateFolders(folders);
     };
 
     const onDownload = async (card: Card) => {
@@ -246,7 +246,7 @@ export const FileManager = () => {
                             name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: tracks });
-                        updateFolders(folders);
+                        await updateFolders(folders);
                     }
                 }
             } finally {
@@ -286,7 +286,7 @@ export const FileManager = () => {
                             name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: [track] });
-                        updateFolders(folders);
+                        await updateFolders(folders);
                     }
                 }
             } catch (e) {

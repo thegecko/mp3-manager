@@ -59,15 +59,16 @@ export const File = memo((props: FileProps) => {
 	connectDrag(ref);
 	connectDrop(ref);
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
-	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
+	const opacity = isDragging || type === 'new' ? 0.4 : 1;
 	const marginLeft = type !== 'folder' ? '24px' : '0';
 	const paddingLeft = type !== 'folder' ? '1.2rem' : '0.85rem';
-	const background = type === 'folder' ? '#d6e9ff' : type === 'new' ? '#fff7dd' : '#ffffff';
-	const borderColor = type === 'folder' ? '#9fc7ef' : '#d7e3ef';
+	const background = type === 'folder' ? '#d6e9ff' : '#ffffff';
+	const borderColor = type === 'folder' ? '#bfd8f1' : '#d7e3ef';
+	const titleStyle = type === 'new' ? { ...titleWrapStyle, textAlign: 'center' } : titleWrapStyle;
 
 	return (
 		<div ref={ref} style={{...fileStyle, background, opacity, marginLeft, paddingLeft, borderColor }} data-handler-id={handlerId}>	
-			<span style={titleWrapStyle}>
+			<span style={titleStyle}>
 				<span
 					title={title}
 					style={{ fontWeight, color: type === 'folder' ? '#244f7f' : '#26384f' }}>
@@ -101,19 +102,21 @@ export const File = memo((props: FileProps) => {
 					</button>
 				}
 				{type !== 'new' &&
-					<button
-						title={type === 'folder' ? 'Download Folder' : 'Download Track'}
-						style={actionButtonStyle}
-						onClick={() => onDownload(id)}>
-						⬇
-					</button>
+					<>
+						<button
+							title={type === 'folder' ? 'Download Folder' : 'Download Track'}
+							style={actionButtonStyle}
+							onClick={() => onDownload(id)}>
+							⬇
+						</button>
+						<button
+							title='Delete'
+							style={dangerButtonStyle}
+							onClick={() => onDelete(id)}>
+							Delete
+						</button>
+					</>
 				}
-				<button
-					title='Delete'
-					style={dangerButtonStyle}
-					onClick={() => onDelete(id)}>
-					Delete
-				</button>
 			</span>
 		</div>
 	);

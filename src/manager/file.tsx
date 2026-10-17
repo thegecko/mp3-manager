@@ -9,6 +9,7 @@ const ItemTypes = {
 
 const style = {
 	display: 'flex',
+	alignItems: 'center',
 	cursor: 'move',
 	padding: '0.1rem',
 	margin: '.2rem',
@@ -104,9 +105,9 @@ export const File = memo((props: FileProps) => {
 						🎵
 					</button>
 				}
-				{type !== 'folder' &&
+				{type !== 'new' &&
 					<button
-						title='Download Track'
+						title={type === 'folder' ? 'Download Folder' : 'Download Track'}
 						onClick={() => onDownload(id)}>
 						⬇
 					</button>

@@ -5,7 +5,17 @@ import { viteSingleFile } from "vite-plugin-singlefile"
 // https://vite.dev/config/
 export default defineConfig({
     build: {
-        minify: true,
+        minify: 'terser',
+        terserOptions: {
+            compress: {
+                drop_console: true,
+                passes: 3,
+                unsafe_arrows: true
+            },
+            mangle: {
+                toplevel: true
+            }
+        }
     },
     plugins: [
         preact(),

@@ -1,13 +1,14 @@
 import { isEsys, EsysDatabase } from './esys-database';
 import { isOmg, OmgDatabase } from './omg-database';
-
 export interface Database {
     getFolders(): Promise<Folder[]>;
     setFolders(folders: Folder[]): Promise<boolean>;
     getNextTrackId(): Promise<number>;
     readFile(id: number): Promise<ArrayBuffer | undefined>;
-    writeFile(id: number, data: ArrayBuffer, duration: number, frames: number, fileName?: string): Promise<Track | undefined>;
+    streamFile(id: number): Promise<File | undefined>;
+    writeFile(id: number, file: File, duration: number, frames: number): Promise<Track | undefined>;
     deleteFile(id: number): Promise<boolean>;
+    createInitFile(device: USBDevice): Promise<File>;
 }
 
 export interface Folder {
@@ -24,12 +25,12 @@ export interface Track {
 }
 
 export const detectDatabase = async (fileSystem: FileSystemDirectoryHandle): Promise<Database> => {
-    if (await isEsys(fileSystem)) {
-        return EsysDatabase.create(fileSystem);
-    }
-
     if (await isOmg(fileSystem)) {
         return OmgDatabase.create(fileSystem);
+    }
+
+    if (await isEsys(fileSystem)) {
+        return EsysDatabase.create(fileSystem);
     }
 
     throw new Error('Not a valid mp3 folder');

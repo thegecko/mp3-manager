@@ -9,7 +9,8 @@
     "prepare": "npm run build",
     "clean": "git clean -f -x ./node_modules ./dist",
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "tsx ./node_modules/mocha/bin/mocha --timeout 10000 test/*.js"
   },
   "dependencies": {
     "preact": "^10.24.3",
@@ -19,6 +20,10 @@
   "devDependencies": {
     "@preact/preset-vite": "^2.9.1",
     "@types/wicg-file-system-access": "2023.10.5",
+    "@types/w3c-web-usb": "^1.0.6",
+    "mocha": "^11.8.0",
+    "terser": "^5.51.2",
+    "tsx": "^4.23.15",
     "vite": "^5.4.10",
     "vite-plugin-singlefile": "^2.0.3"
   }

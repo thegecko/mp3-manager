@@ -1,17 +1,10 @@
 import type { Track } from '../database/database-detector';
 import { useBusy, useDb, useFolders } from '../context';
+import { primaryButtonStyle } from '../styles';
 import { createFile, MP3_EXTENSION, newFolder } from './util';
 
 const isMp3File = (entry: FileSystemDirectoryHandle | FileSystemFileHandle): entry is FileSystemFileHandle =>
     (entry as FileSystemFileHandle).kind === 'file' && entry.name.endsWith(MP3_EXTENSION);
-
-const style = {
-    color: 'white',
-    background: 'dodgerblue',
-    padding: '0.5rem',
-    marginRight: '10px',
-    borderRadius: '5px',
-}
 
 export const AddFolder = () => {
     const { db } = useDb();
@@ -57,11 +50,11 @@ export const AddFolder = () => {
 
     return (
         <>
-            <button style={style}
+            <button style={primaryButtonStyle}
                 onClick={onAdd}>
                 Add Folder
             </button>
-            <button style={style}
+            <button style={primaryButtonStyle}
                 onClick={onCreate}>
                 Create Folder
             </button>

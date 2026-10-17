@@ -3,12 +3,8 @@ import type { ComponentChild } from 'preact'
 import type { PropsWithChildren } from 'preact/compat'
 import { useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
-
-const style = {
-	flex: 1,
-    overflow: 'auto',
-	padding: '1rem'
-}
+import { emptyStyle } from '../styles'
+import { containerStyle } from '../styles'
 
 export interface FileContainerProps {
     onNew: () => any
@@ -37,8 +33,8 @@ export const FileContainer = (props: PropsWithChildren<FileContainerProps>) => {
 	const hasFiles = (props.children as ComponentChild[]).length > 0;
 
 	return (
-		<div ref={ref} style={style}>
-			{hasFiles ? undefined : 'Drag Files Here'}
+		<div ref={ref} style={containerStyle}>
+			{hasFiles ? undefined : <div style={emptyStyle}>Drop MP3 files or folders here</div>}
             {props.children}
 		</div>
 	);

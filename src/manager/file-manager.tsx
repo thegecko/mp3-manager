@@ -9,17 +9,11 @@ import { NEW_ID, Card, buildFolders, getCards, getFiles, createFile, createZip, 
 import { useBusy, useDb, useFolders } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
-import { Init } from '../init';
+import { footerStyle } from '../styles';
+
+const TRACK_LABEL = 'Add Track(s)';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
-
-const footerStyle = {
-    height: '50px',
-    display: 'flex',
-    alignItems: 'center',
-    background: '#d5d5d5',
-    padding: '0 10px',
-}
 
 export const FileManager = () => {
     const { db } = useDb();
@@ -33,7 +27,7 @@ export const FileManager = () => {
         const newCard: Card = {
             id: NEW_ID,
             type: 'new',
-            name: `add track(s)`
+            name: TRACK_LABEL
         };
         setCards(prevCards => [
             ...prevCards,
@@ -250,7 +244,7 @@ export const FileManager = () => {
                         newCards.splice(insertIndex, 0, {
                             id: NEW_ID,
                             type: 'new',
-                            name: `add track(s)`
+                            name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: tracks });
                         updateFolders(folders);
@@ -290,7 +284,7 @@ export const FileManager = () => {
                         newCards.splice(insertIndex, 0, {
                             id: NEW_ID,
                             type: 'new',
-                            name: `add track(s)`
+                            name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: [track] });
                         updateFolders(folders);
@@ -350,7 +344,6 @@ export const FileManager = () => {
             </DndProvider>
             <div style={footerStyle}>
                 <AddFolder />
-                <Init />
                 <DriveSelect />
             </div>
         </>

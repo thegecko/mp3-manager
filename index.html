@@ -6,10 +6,11 @@
     <title>mp3 Manager</title>
     <link rel="shortcut icon" href="favicon.ico">
     <style>
-      * { font-family: ui-sans-serif, system-ui, sans-serif; color: #333 }
-      body,html { margin: 0; padding: 0; background-color: #f5f5f5;}
-      button { border: none; background: none; cursor: pointer; font-size: 16px; }
-      button:hover { opacity: 0.7; }
+      * { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #243042; box-sizing: border-box; }
+      body,html { margin: 0; padding: 0; background: linear-gradient(180deg, #f8fbff 0%, #eef6f3 100%); }
+      button { border: none; cursor: pointer; font-size: 14px; transition: transform .12s ease, background .12s ease, opacity .12s ease; }
+      button:hover { transform: translateY(-1px); }
+      button:active { transform: translateY(0); }
       @keyframes rotation {  0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
     </style>
   </head>

@@ -2,20 +2,10 @@ import { useRef } from 'preact/hooks'
 import { memo } from 'preact/compat'
 import { useDrag, useDrop } from 'react-dnd'
 import { NativeTypes } from 'react-dnd-html5-backend'
+import { actionButtonStyle, actionsStyle, artistStyle, dangerButtonStyle, fileStyle, titleWrapStyle } from '../styles'
 
 const ItemTypes = {
 	FILE: 'file',
-}
-
-const style = {
-	display: 'flex',
-	alignItems: 'center',
-	cursor: 'move',
-	padding: '0.1rem',
-	margin: '.2rem',
-	border: '1px solid gray',
-	borderRadius: '5px',
-	boxShadow: '2px 2px #dbdbdb'
 }
 
 export interface FileProps {
@@ -67,55 +57,61 @@ export const File = memo((props: FileProps) => {
 
 	connectDrag(ref);
 	connectDrop(ref);
-	const background = type === 'folder' ? 'lightblue' : '#fffff5'
 	const fontWeight = type === 'folder' ? 'bold' : 'normal'
 	const opacity = (isDragging || type === 'new') ? 0.2 : 1;
-	const marginLeft = type !== 'folder' ? '20px' : '0';
-	const paddingLeft = type !== 'folder' ? '40px' : '100px';
+	const marginLeft = type !== 'folder' ? '24px' : '0';
+	const paddingLeft = type !== 'folder' ? '1.2rem' : '0.85rem';
+	const background = type === 'folder' ? '#d6e9ff' : type === 'new' ? '#fff7dd' : '#ffffff';
+	const borderColor = type === 'folder' ? '#9fc7ef' : '#d7e3ef';
 
 	return (
-		<div ref={ref} style={{...style, background, opacity, marginLeft, paddingLeft }} data-handler-id={handlerId}>	
-			<span style={{flex: 1, textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+		<div ref={ref} style={{...fileStyle, background, opacity, marginLeft, paddingLeft, borderColor }} data-handler-id={handlerId}>	
+			<span style={titleWrapStyle}>
 				<span
 					title={title}
-					style={{ fontWeight }}>
+					style={{ fontWeight, color: type === 'folder' ? '#244f7f' : '#26384f' }}>
 					{text}
 				</span>
+				{title && type !== 'folder' && <span style={artistStyle}>{title}</span>}
 				{type !== 'new' &&
 					<button
 						title='Rename'
-						style={{transform: `scale(-1, 1)`}}
+						style={actionButtonStyle}
 						onClick={() => onRename(id)}>
-						✏️
+						Edit
 					</button>
 				}
 			</span>
-			<span style={{marginLeft: 'auto', alignContent: 'center'}}>
+			<span style={actionsStyle}>
 				{type === 'folder' &&
 					<button
 						title='Add Track'
+						style={actionButtonStyle}
 						onClick={() => onAdd(id)}>
-						➕
+						Add
 					</button>
 				}
 				{type === 'folder' &&
 					<button
 						title='Yank Track (experimental)'
+						style={actionButtonStyle}
 						onClick={() => onYank(id)}>
-						🎵
+						Yank
 					</button>
 				}
 				{type !== 'new' &&
 					<button
 						title={type === 'folder' ? 'Download Folder' : 'Download Track'}
+						style={actionButtonStyle}
 						onClick={() => onDownload(id)}>
 						⬇
 					</button>
 				}
 				<button
 					title='Delete'
+					style={dangerButtonStyle}
 					onClick={() => onDelete(id)}>
-					🗑
+					Delete
 				</button>
 			</span>
 		</div>

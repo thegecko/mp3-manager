@@ -1,12 +1,5 @@
 import { useBusy, useDb } from './context';
-
-const style = {
-    color: 'white',
-    background: 'dodgerblue',
-    padding: '0.5rem',
-    marginRight: '10px',
-    borderRadius: '5px',
-}
+import { primaryButtonStyle } from './styles';
 
 const downloadFile = (file: File): void => {
     const url = URL.createObjectURL(file);
@@ -52,7 +45,7 @@ export const Init = () => {
     return (
         <>
             {db &&
-                <button style={style}
+                <button style={primaryButtonStyle}
                     onClick={onCreateInitFile}>
                     Create Init File
                 </button>

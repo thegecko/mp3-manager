@@ -10,7 +10,7 @@
     "clean": "git clean -f -x ./node_modules ./dist",
     "build": "vite build",
     "dev": "vite",
-    "test": "./node_modules/.bin/tsx ./node_modules/mocha/bin/mocha --timeout 10000 test/*.js"
+    "test": "tsx ./node_modules/mocha/bin/mocha --timeout 10000 test/*.js"
   },
   "dependencies": {
     "preact": "^10.24.3",

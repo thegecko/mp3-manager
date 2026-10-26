@@ -61,7 +61,7 @@ export const DriveSelect = () => {
                 Select Device Drive
             </button>
             <Init />
-            {fs && <span style={statusPillStyle}>Connected: {fs.name}</span>}
+            {fs && db && <span style={statusPillStyle}>Connected: {fs.name} ({db.type})</span>}
         </>
     );
 };

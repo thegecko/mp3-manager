@@ -1,6 +1,7 @@
 import { isEsys, EsysDatabase } from './esys-database';
 import { isOmg, OmgDatabase } from './omg-database';
 export interface Database {
+    type: 'esys' | 'omg';
     getFolders(): Promise<Folder[]>;
     setFolders(folders: Folder[]): Promise<boolean>;
     getNextTrackId(): Promise<number>;

@@ -68,6 +68,8 @@ const getFilename = (id: number) => `MP${id.toString(16).padStart(4, '0').toUppe
 
 export class EsysDatabase implements Database {
 
+    public readonly type = 'esys' as const;
+
     public async createInitFile(device: USBDevice): Promise<File> {
         const data = await readFirstUsbStorageSector(device);
         const serialNumber = readFatSerialNumber(data);

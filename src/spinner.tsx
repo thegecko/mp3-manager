@@ -28,14 +28,14 @@ const loader = {
 }
 
 export const Spinner = () => {
-    const { busy } = useBusy();
+    const { busy, busyMessage } = useBusy();
 
     return (
         <>
             {busy &&
                 <div style={style}>
                     <div style={loader}></div>
-                    <div>Working...</div>
+                    <div>{busyMessage || 'Waiting...'}</div>
                 </div>
             }
         </>

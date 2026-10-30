@@ -22,7 +22,7 @@ export const Init = () => {
         }
 
         try {
-            updateBusy(true);
+            updateBusy(true, 'Creating init file...');
             const usb = (navigator as any).usb;
             if (!usb) {
                 throw new Error('WebUSB is not available in this browser');

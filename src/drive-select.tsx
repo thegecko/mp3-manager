@@ -35,11 +35,12 @@ export const DriveSelect = () => {
         if (fileSystem) {
             try {
                 log('drive: selected folder', { name: fileSystem.name, elapsed: elapsed(start) });
-                updateBusy(true);
+                updateBusy(true, 'Detecting database...');
                 const database = await detectDatabase(fileSystem);
                 log('drive: database detected', { type: database.type, elapsed: elapsed(start) });
                 updateFs(fileSystem);
-                updateDb(database);
+                updateBusy(true, `Loading ${database.type} database...`);
+                await updateDb(database);
                 log('drive: connected', { type: database.type, name: fileSystem.name, elapsed: elapsed(start) });
             } catch (e) {
                 warn('drive: connect failed', e);

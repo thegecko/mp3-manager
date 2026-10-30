@@ -22,10 +22,11 @@ export const AddFolder = () => {
             const start = performance.now();
             try {
                 log('folder upload: start', { folder: folder.name });
-                updateBusy(true);
+                updateBusy(true, `Reading folder: ${folder.name}`);
                 const tracks: Track[] = [];
                 for await (const [ name, entry ] of folder.entries()) {
                     if (isMp3File(entry)) {
+                        updateBusy(true, `Importing: ${name}`);
                         log('folder upload: importing file', { name, elapsed: elapsed(start) });
                         const file = await entry.getFile();
                         const track = await createFile(db, file);
@@ -34,6 +35,7 @@ export const AddFolder = () => {
                         }
                     }
                 }
+                updateBusy(true, 'Saving database...');
                 log('folder upload: saving database', { folder: folder.name, tracks: tracks.length, elapsed: elapsed(start) });
                 folders.unshift(newFolder(folder.name, tracks));
                 await updateFolders(folders);

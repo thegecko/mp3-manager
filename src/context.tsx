@@ -21,17 +21,24 @@ export const FileSystemContext = createContext({
 
 export const BusyContext = createContext({
     busy: false,
-    updateBusy: (busy: boolean) => { }
+    busyMessage: 'Waiting...',
+    updateBusy: (busy: boolean, message?: string) => { }
 });
 
 export const ContextProvider = (props: PropsWithChildren) => {
-    const [busy, updateBusy] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [busyMessage, setBusyMessage] = useState('Waiting...');
     const [fs, updateFs] = useState(undefined as FileSystemDirectoryHandle | undefined);
     const [db, setDb] = useState(undefined as Database | undefined);
     const [folders, setFolders] = useState([] as Folder[]);
 
-    const busyWrapper = async (fn: () => Promise<void>) => {
-        updateBusy(true);
+    const updateBusy = (busy: boolean, message = 'Waiting...') => {
+        setBusyMessage(message);
+        setBusy(busy);
+    };
+
+    const busyWrapper = async (fn: () => Promise<void>, message = 'Waiting...') => {
+        updateBusy(true, message);
         try {
             await fn();
         } finally {
@@ -41,10 +48,12 @@ export const ContextProvider = (props: PropsWithChildren) => {
 
     const updateDb = async (db?: Database) => {
         await busyWrapper(async () => {
+            updateBusy(true, db ? 'Loading database...' : 'Disconnecting...');
             setDb(db);
+            updateBusy(true, db ? 'Reading folders...' : 'Waiting...');
             const folders = db ? await db.getFolders() : [];
             setFolders(folders);
-        });
+        }, db ? 'Loading database...' : 'Disconnecting...');
     };
 
     const updateFolders = async (folders: Folder[]) => {
@@ -52,6 +61,7 @@ export const ContextProvider = (props: PropsWithChildren) => {
             if (db) {
                 const start = performance.now();
                 try {
+                    updateBusy(true, 'Writing database...');
                     log('database save: start', { db: db.type, folders: folders.length });
                     const saved = await db.setFolders(folders);
                     if (!saved) {
@@ -62,16 +72,17 @@ export const ContextProvider = (props: PropsWithChildren) => {
                     error('database save: failed', { elapsed: elapsed(start), error: e });
                     alert(`Unable to save changes to the device: ${formatError(e)}`);
                 }
+                updateBusy(true, 'Reloading folders...');
                 log('database save: reloading folders', { elapsed: elapsed(start) });
                 folders = await db.getFolders();
                 setFolders(folders);
                 log('database save: complete', { folders: folders.length, elapsed: elapsed(start) });
             }
-        });
+        }, 'Saving changes...');
     };
 
     return (
-        <BusyContext.Provider value={{ busy, updateBusy }} >
+        <BusyContext.Provider value={{ busy, busyMessage, updateBusy }} >
             <FileSystemContext.Provider value={{ fs, updateFs }} >
                 <DbContext.Provider value={{ db, updateDb }} >
                     <FoldersContext.Provider value={{ folders, updateFolders }} >

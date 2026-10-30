@@ -107,14 +107,15 @@ export const FileManager = () => {
         const start = performance.now();
         try {
             log('drop upload: start');
-            updateBusy(true);
+            updateBusy(true, 'Reading dropped files...');
 
             const newFolders = new Map<string, Track[]>();
             const newTracks: Track[] = [];
             if (isDataTransfer(card)) {
                 const files = await getFiles(card);
                 log('drop upload: files selected', { count: files.length, elapsed: elapsed(start) });
-                for (const { file, folder } of files) {
+                for (const [index, { file, folder }] of files.entries()) {
+                    updateBusy(true, `Importing ${index + 1}/${files.length}: ${file.name}`);
                     log('drop upload: importing file', { file: file.name, folder });
                     const track = await createFile(db, file);
                     if (track) {
@@ -127,6 +128,7 @@ export const FileManager = () => {
                 }
             }
             const folders = buildFolders(cards, { newFolders, newTracks });
+            updateBusy(true, 'Saving database...');
             log('drop upload: saving database', { folders: folders.length, elapsed: elapsed(start) });
             await updateFolders(folders);
             log('drop upload: complete', { elapsed: elapsed(start) });
@@ -144,7 +146,7 @@ export const FileManager = () => {
         }
 
         try {
-            updateBusy(true);
+            updateBusy(true, 'Deleting files...');
 
             // Delete files
             let deletingTracks = false;
@@ -157,6 +159,7 @@ export const FileManager = () => {
             }
 
             const folders = buildFolders(cards, { deleteId: toDelete.id });
+            updateBusy(true, 'Saving database...');
             await updateFolders(folders);
         } finally {
             updateBusy(false);
@@ -195,7 +198,7 @@ export const FileManager = () => {
         }
 
         try {
-            updateBusy(true);
+            updateBusy(true, card.type === 'folder' ? 'Preparing folder download...' : 'Preparing track download...');
 
             let file: File | undefined;
             if (card.type === 'folder') {
@@ -207,6 +210,7 @@ export const FileManager = () => {
                     }
                 }
                 const files = (await Promise.all(tracks.map(track => db.streamFile(track.id)))).filter(file => !!file) as File[];
+                updateBusy(true, 'Creating ZIP file...');
                 file = await createZip(card.name, files);
             } else {
                 file = await db.streamFile(card.id);
@@ -237,12 +241,13 @@ export const FileManager = () => {
             const start = performance.now();
             try {
                 log('button upload: start', { handles: files.length });
-                updateBusy(true);
+                updateBusy(true, 'Reading selected files...');
 
                 const tracks: Track[] = [];
-                for (const handle of files) {
+                for (const [index, handle] of files.entries()) {
                     log('button upload: reading selected file', { name: handle.name });
                     const file = await handle.getFile();
+                    updateBusy(true, `Importing ${index + 1}/${files.length}: ${file.name}`);
                     log('button upload: importing file', { file: file.name, size: file.size, type: file.type });
                     const track = await createFile(db, file);
 
@@ -261,6 +266,7 @@ export const FileManager = () => {
                             name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: tracks });
+                        updateBusy(true, 'Saving database...');
                         log('button upload: saving database', { tracks: tracks.length, folders: folders.length, elapsed: elapsed(start) });
                         await updateFolders(folders);
                         log('button upload: complete', { elapsed: elapsed(start) });
@@ -287,12 +293,13 @@ export const FileManager = () => {
         const trackId = trackUrl.replace(/^(.*[\\\/])/, '').split('?').shift();
         if (trackId) {
             try {
-                updateBusy(true);
+                updateBusy(true, 'Downloading track...');
                 const yankUrl = `https://yank.g3v.co.uk/track/${trackId}`;
                 console.log(yankUrl);
                 const response = await fetch(yankUrl);
                 const blob = await response.blob();
                 const file = new File([blob], `${trackId}.${MP3_EXTENSION}`, { type: 'audio/mpeg' });
+                updateBusy(true, 'Importing downloaded track...');
                 const track = await createFile(db, file);
 
                 if (track) {
@@ -305,6 +312,7 @@ export const FileManager = () => {
                             name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: [track] });
+                        updateBusy(true, 'Saving database...');
                         await updateFolders(folders);
                     }
                 }

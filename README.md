@@ -74,10 +74,6 @@ Once opened, select the drive you want to manage and everything should be self e
 - [x] Delete
 - [x] Download
 
-### Other
-
-- [x] Create init file (requires browser with WebUSB support)
-
 ## Troubleshooting Tips
 
 - On newer versions of Windows, there is already a driver for these devices you can install:

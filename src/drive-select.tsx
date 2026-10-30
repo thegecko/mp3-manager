@@ -1,7 +1,6 @@
 import { useEffect } from 'preact/hooks';
 import { detectDatabase } from './database/database-detector';
 import { useBusy, useDb, useFs } from './context';
-import { Init } from './init';
 import { primaryButtonStyle, statusPillStyle } from './styles';
 
 const DRIVE_TIMEOUT = 2000;
@@ -60,8 +59,7 @@ export const DriveSelect = () => {
                 onClick={onConnect}>
                 Select Device Drive
             </button>
-            <Init />
-            {fs && db && <span style={statusPillStyle}>Connected: {fs.name} ({db.type})</span>}
+            {fs && db && <span style={statusPillStyle}>Connected ({db.type}): {fs.name}</span>}
         </>
     );
 };

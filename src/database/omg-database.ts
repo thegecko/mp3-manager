@@ -102,7 +102,7 @@ const getFileHandle = async (folder: FileSystemDirectoryHandle, name: string, op
 
 export class OmgDatabase implements Database {
 
-    public readonly type = 'omg' as const;
+    public readonly type = 'OMG' as const;
 
     public async createInitFile(device: USBDevice): Promise<File> {
         const data = await transferUsbStorageCommand(device, QUERY_DVID_COMMAND, 18);

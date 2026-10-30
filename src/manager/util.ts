@@ -1,7 +1,10 @@
 import type { Database, Folder, Track } from '../database/database-detector';
+import { elapsed, log, warn } from '../log';
 
 export const MP3_EXTENSION = 'mp3';
 export const NEW_ID = -99;
+const METADATA_TIMEOUT = 5000;
+const FILE_ENTRY_TIMEOUT = 5000;
 
 const isFile = (entry: FileSystemEntry): entry is FileSystemFileEntry => entry.isFile;
 const isDirectory = (entry: FileSystemEntry): entry is FileSystemDirectoryEntry => entry.isDirectory;
@@ -53,32 +56,81 @@ export const newFolder = (name: string, tracks: Track[] = []): Folder => ({
 });
 
 export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): Promise<FileAndFolder[]> => {
+    const start = performance.now();
     const files: FileAndFolder[] = [];
+    const matchesFilter = (name: string): boolean => name.toLowerCase().endsWith(filter.toLowerCase());
+
+    const withTimeout = async <T,>(promise: Promise<T>, message: string): Promise<T> => {
+        let timeout: number | undefined;
+        try {
+            return await Promise.race([
+                promise,
+                new Promise<T>((_resolve, reject) => {
+                    timeout = setTimeout(() => reject(new Error(message)), FILE_ENTRY_TIMEOUT);
+                })
+            ]);
+        } finally {
+            clearTimeout(timeout);
+        }
+    };
+
+    const readEntryFile = async (entry: FileSystemFileEntry): Promise<File> =>
+        withTimeout(new Promise<File>((resolve, reject) => entry.file(resolve, reject)), `Timed out reading dropped file ${entry.name}`);
+
+    const readDirectoryEntries = async (entry: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> => {
+        const reader = entry.createReader();
+        const entries: FileSystemEntry[] = [];
+        while (true) {
+            const batch = await withTimeout(
+                new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject)),
+                `Timed out reading dropped directory ${entry.name}`
+            );
+            log('drop upload: directory entries read', { folder: entry.name, count: batch.length, elapsed: elapsed(start) });
+            if (batch.length === 0) {
+                return entries;
+            }
+            entries.push(...batch);
+        }
+    };
 
     const addFile = async (entry: FileSystemEntry, folder?: string) => {
-        if (isFile(entry) && entry.name.endsWith(filter)) {
-            const file = await new Promise<File>(resolve => entry.file(resolve));
+        if (isFile(entry) && matchesFilter(entry.name)) {
+            log('drop upload: reading dropped file', { name: entry.name, folder, elapsed: elapsed(start) });
+            const file = await readEntryFile(entry);
             files.push({ file, folder });
+            log('drop upload: dropped file ready', { name: file.name, size: file.size, folder, elapsed: elapsed(start) });
+        } else if (isFile(entry)) {
+            log('drop upload: skipping non-mp3 file', { name: entry.name, folder });
         }
     };
 
     // Hold references or they disappear after first await
     const entries = [...transfer.items]
-        .map(item => item.webkitGetAsEntry())
-        .filter(entry => !!entry);
+        .map(item => ({ item, entry: item.webkitGetAsEntry() }))
+        .filter(({ entry }) => !!entry) as { item: DataTransferItem, entry: FileSystemEntry }[];
+    log('drop upload: enumerating data transfer', { items: transfer.items.length, entries: entries.length, elapsed: elapsed(start) });
 
-    for (const entry of entries) {
+    for (const { item, entry } of entries) {
         if (isFile(entry)) {
-            await addFile(entry);
+            const file = item.getAsFile();
+            if (file && matchesFilter(file.name)) {
+                files.push({ file });
+                log('drop upload: dropped file ready from data transfer item', { name: file.name, size: file.size, elapsed: elapsed(start) });
+            } else if (file) {
+                log('drop upload: skipping non-mp3 file', { name: file.name });
+            } else {
+                await addFile(entry);
+            }
         } else if (isDirectory(entry)) {
-            const reader = entry.createReader();
-            const files = await new Promise<FileSystemEntry[]>(resolve => reader.readEntries(resolve));
+            log('drop upload: reading dropped directory', { name: entry.name, elapsed: elapsed(start) });
+            const files = await readDirectoryEntries(entry);
             for (const file of files) {
                 await addFile(file, entry.name);
             }
         }
     }
 
+    log('drop upload: enumeration complete', { count: files.length, elapsed: elapsed(start) });
     return files;
 };
 
@@ -170,30 +222,55 @@ export const createFile = async (db: Database, file: File): Promise<Track | unde
         throw new Error('No database');
     }
 
+    const start = performance.now();
     try {
+        log('upload: allocating track id', { file: file.name, size: file.size, type: file.type, db: db.type });
         const id = await db.getNextTrackId();
+        log('upload: allocated track id', { id, elapsed: elapsed(start) });
+
+        log('upload: reading audio metadata', { id, file: file.name });
         const duration = await getDuration(file);
         const frames = estimateMp3Frames(duration);
+        log('upload: audio metadata ready', { id, duration, frames, elapsed: elapsed(start) });
 
+        log('upload: writing device file', { id, file: file.name });
         const track = await db.writeFile(id, file, duration, frames);
+        log('upload: device file write complete', { id, track, elapsed: elapsed(start) });
         return track;
     } catch (e) {
-        console.error(e);
+        warn('upload: failed', { file: file.name, elapsed: elapsed(start), error: e });
     }
 };
 
 const getDuration = async (file: File): Promise<number> => {
     const url = URL.createObjectURL(file);
+    const start = performance.now();
     try {
         const audio = new Audio(url);
         audio.preload = 'metadata';
 
         await new Promise<void>((resolve, reject) => {
-            audio.onloadedmetadata = () => resolve();
-            audio.onerror = () => reject(new Error('Unable to read audio metadata'));
+            const cleanup = () => {
+                clearTimeout(timeout);
+                audio.onloadedmetadata = null;
+                audio.onerror = null;
+            };
+            const complete = (fn: () => void): void => {
+                cleanup();
+                fn();
+            };
+            const timeout = setTimeout(() => complete(() => reject(new Error('Timed out reading audio metadata'))), METADATA_TIMEOUT);
+            audio.onloadedmetadata = () => complete(resolve);
+            audio.onerror = () => complete(() => reject(new Error('Unable to read audio metadata')));
+            audio.load();
         });
 
-        return Math.round(audio.duration * 1000);
+        const duration = Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0;
+        log('upload: browser metadata loaded', { file: file.name, duration, elapsed: elapsed(start) });
+        return duration;
+    } catch (e) {
+        warn(`upload: unable to read duration for ${file.name}; importing with duration 0`, { elapsed: elapsed(start), error: e });
+        return 0;
     } finally {
         URL.revokeObjectURL(url);
     }

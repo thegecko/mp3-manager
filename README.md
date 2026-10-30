@@ -22,12 +22,12 @@ This approach means:
 
 ### ESYS
 - Generation 0 (NW-MSx, NW-Ex, NW-S4, NW-E8P, NW-MSxx, NW-HD1, NW-HD2)
-- Generation 1 (NW-Sxx, NW-Exx except NW-E99)
-- Generation 2 (NW-E99) - **Tested**
+- Generation 1 (NW-Sxx, NW-Exx except NW-E99) **NW-E95 Tested**
+- Generation 2 (NW-E99) - **NW-E99 Tested**
 
 ### OMGAUDIO
 - Generation 3 (NW-HD3, NW-HD5, NW-E10x/E2xx/E3xx/E4xx/E5xx)
-- Generation 4 (NW-A1000, NW-A1200, NW-A3000, NW-A60x)
+- Generation 4 (NW-A1000, NW-A1200, NW-A3000, NW-A60x) **NW-A608 Tested**
 - Generation 5 (NW-E00x)
 - Generation 6 (NW-S20x)
 - Generation 7 (NW-E01x, NW-S60x/S70x, NW-S71x, NW-A80x, NW-A91x)

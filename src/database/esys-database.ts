@@ -9,6 +9,7 @@
 import { addTags, readTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 import { transferUsbStorageCommand } from '../usb-storage';
+import { elapsed, log } from '../log';
 
 const ROOT_FOLDER = 'ESYS';
 const DATA_FOLDER = 'NW-MP3';
@@ -95,17 +96,24 @@ export class EsysDatabase implements Database {
     }
 
     public static async create(fileSystem: FileSystemDirectoryHandle): Promise<Database> {
-        if (!isEsys(fileSystem)) {
+        const start = performance.now();
+        log('esys load: start', { root: fileSystem.name });
+        if (!await isEsys(fileSystem)) {
             throw new Error('Invalid folder');
         }
 
         const rootFolder = await fileSystem.getDirectoryHandle(ROOT_FOLDER);
+        log('esys load: opened ESYS folder', { elapsed: elapsed(start) });
         const dataFolder = await rootFolder.getDirectoryHandle(DATA_FOLDER);
+        log('esys load: opened data folder', { folder: DATA_FOLDER, elapsed: elapsed(start) });
         const dbHandle = await rootFolder.getFileHandle(DB_FILE);
         const dbFile = await dbHandle.getFile();
         const buffer = await dbFile.arrayBuffer();
+        log('esys load: read database', { file: dbFile.name, bytes: dbFile.size, elapsed: elapsed(start) });
 
-        return new EsysDatabase(rootFolder, dataFolder, buffer);
+        const database = new EsysDatabase(rootFolder, dataFolder, buffer);
+        log('esys load: complete', { folders: database.folderCount, tracks: database.trackCount, elapsed: elapsed(start) });
+        return database;
     }
 
     protected view: DataView;
@@ -135,6 +143,8 @@ export class EsysDatabase implements Database {
     }
 
     public async getFolders(): Promise<Folder[]> {
+        const start = performance.now();
+        log('esys folders: scanning database', { folderCount: this.folderCount, trackCount: this.trackCount });
         const folders: Folder[] = [];
         let lastOffset = this.trackCount;
 
@@ -155,13 +165,18 @@ export class EsysDatabase implements Database {
             folders.unshift({ name, id: -1 - i, tracks });
         }
 
+        const tracks = folders.reduce((count, folder) => count + folder.tracks.length, 0);
+        log('esys folders: scan complete', { folders: folders.length, tracks, elapsed: elapsed(start) });
         return folders;
     }
 
     public async setFolders(folders: Folder[]): Promise<boolean> {
+        const start = performance.now();
         try {
+            log('esys save: start', { folders: folders.length });
             // Backup
             const backupFile = await this.rootFolder.getFileHandle(BACKUP_FILE, { create: true });
+            log('esys save: writing backup', { file: BACKUP_FILE });
             await this.writeFileHandle(backupFile, this.view.buffer);
 
             // Re-initialise
@@ -198,7 +213,9 @@ export class EsysDatabase implements Database {
 
             // Write data file
             const dbFile = await this.rootFolder.getFileHandle(DB_FILE, { create: true });
+            log('esys save: writing database', { file: DB_FILE, bytes: buffer.byteLength });
             await this.writeFileHandle(dbFile, buffer);
+            log('esys save: complete', { elapsed: elapsed(start) });
 
             return true;
         } catch (e) {

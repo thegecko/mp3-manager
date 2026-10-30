@@ -12,15 +12,18 @@
 import { addTags, readTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 import { transferUsbStorageCommand } from '../usb-storage';
+import { elapsed, log, warn } from '../log';
 
 const ROOT_FOLDER = 'OMGAUDIO';
 const DB_FILE = '04CNTINF.DAT';
+const BACKUP_FOLDER = 'db_backup';
 const FILE_HEADER_SIZE = 16;
 const OBJECT_POINTER_SIZE = 16;
 const OBJECT_HEADER_SIZE = 16;
 const RECORD_HEADER_SIZE = 16;
 const TITLE_RECORD_SIZE = 0x290;
 const OMA_EXTENSION = 'OMA';
+const MP3_EXTENSION = 'mp3';
 const TABLE_MAGIC = 'CNIF';
 const CONTENT_OBJECT_MAGIC = 'CNFB';
 
@@ -31,12 +34,28 @@ const GENRE_TAG = 'TCON';
 const LENGTH_TAG = 'TLEN';
 const OMA_TAG_SIZE = 0x0c00;
 const OMA_SECOND_HEADER_SIZE = 0x60;
+const OMA_FILE_PROPERTIES = 0x0380d910;
+const TREE_GPLB_OFFSET = 0x30;
+const TREE_TPLB_OFFSET = 0x4040;
+const TREE_GPLB_LENGTH = 0x4010;
 const DEFAULT_GENRE = 'unknown genre';
 
 interface OmgTrackInfo {
     duration: number;
     frames: number;
     genre: string;
+    fileProperties: number;
+}
+
+interface OmgTrackEntry {
+    id: number;
+    name: string;
+    artist: string;
+    album: string;
+    genre: string;
+    duration: number;
+    frames: number;
+    fileProperties: number;
 }
 
 const QUERY_DVID_COMMAND = Uint8Array.from([
@@ -118,17 +137,24 @@ export class OmgDatabase implements Database {
     }
 
     public static async create(fileSystem: FileSystemDirectoryHandle): Promise<Database> {
-        if (!isOmg(fileSystem)) {
+        const start = performance.now();
+        log('omg load: start', { root: fileSystem.name });
+        if (!await isOmg(fileSystem)) {
             throw new Error('Invalid folder');
         }
 
         const rootFolder = await getDirectoryHandle(fileSystem, ROOT_FOLDER);
+        log('omg load: opened OMGAUDIO folder', { name: rootFolder.name, elapsed: elapsed(start) });
         const dbHandle = await getFileHandle(rootFolder, DB_FILE);
         const dbFile = await dbHandle.getFile();
         const dbBuffer = await dbFile.arrayBuffer();
+        log('omg load: read content database', { file: dbFile.name, bytes: dbFile.size, elapsed: elapsed(start) });
         const dvid = await readDvidFile(rootFolder);
+        log('omg load: read DvID', { present: dvid !== undefined, elapsed: elapsed(start) });
 
-        return new OmgDatabase(rootFolder, dbBuffer, dvid);
+        const database = new OmgDatabase(rootFolder, dbBuffer, dvid);
+        log('omg load: complete', { trackCount: database.trackCount, elapsed: elapsed(start) });
+        return database;
     }
 
     protected dbView: DataView;
@@ -139,7 +165,6 @@ export class OmgDatabase implements Database {
     protected tracks = new Map<number, Track | undefined>;
     protected trackInfo = new Map<number, OmgTrackInfo>();
     protected reservedIds = new Set<number>();
-
     protected constructor(
         protected rootFolder: FileSystemDirectoryHandle,
         dbBuffer: ArrayBuffer,
@@ -154,8 +179,12 @@ export class OmgDatabase implements Database {
     }
 
     public async getFolders(): Promise<Folder[]> {
+        const start = performance.now();
+        log('omg folders: scanning database', { trackCount: this.trackCount });
         const folders: Folder[] = [];
         const foldersByAlbum = new Map<string, Folder>();
+        let emptySlots = 0;
+        let missingFiles = 0;
         this.tracks.clear();
 
         for (let i = 0; i < this.trackCount; i++) {
@@ -165,16 +194,22 @@ export class OmgDatabase implements Database {
             const name = tags.get(TITLE_TAG) || '';
             const artist = tags.get(ARTIST_TAG) || '';
             const album = tags.get(ALBUM_TAG) || '';
-            const duration = this.dbView.getUint32(offset + 4);
-            const frames = this.dbView.getUint32(offset + 8);
+            const field4 = this.dbView.getUint32(offset + 4);
+            const field8 = this.dbView.getUint32(offset + 8);
+            const usesFileProperties = field4 === OMA_FILE_PROPERTIES;
+            const duration = usesFileProperties ? field8 : field4;
+            const frames = usesFileProperties ? 0 : field8;
+            const fileProperties = usesFileProperties ? field4 : OMA_FILE_PROPERTIES;
             const genre = tags.get(GENRE_TAG) || DEFAULT_GENRE;
 
             if (!name && !artist && !album) {
+                emptySlots++;
                 continue;
             }
 
             const fileHandle = await this.getTitleFileHandle(id);
             if (!fileHandle) {
+                missingFiles++;
                 continue;
             }
 
@@ -192,39 +227,60 @@ export class OmgDatabase implements Database {
 
             const track = {
                 id,
-                file: `${safeName(normaliseUnknown(artist, 'Unknown Artist'))} - ${safeName(normaliseUnknown(name, 'Unknown Title'))}.${OMA_EXTENSION.toLowerCase()}`,
+                file: `${safeName(normaliseUnknown(artist, 'Unknown Artist'))} - ${safeName(normaliseUnknown(name, 'Unknown Title'))}.${MP3_EXTENSION}`,
                 name: normaliseUnknown(name, 'Unknown Title'),
                 artist: normaliseUnknown(artist, 'Unknown Artist')
             };
             folder.tracks.push(track);
             this.tracks.set(id, track);
-            this.trackInfo.set(id, { duration, frames, genre });
+            this.trackInfo.set(id, { duration, frames, genre, fileProperties });
         }
 
+        const tracks = folders.reduce((count, folder) => count + folder.tracks.length, 0);
+        log('omg folders: scan complete', { folders: folders.length, tracks, emptySlots, missingFiles, elapsed: elapsed(start) });
         return folders;
     }
 
     public async setFolders(folders: Folder[]): Promise<boolean> {
+        const start = performance.now();
         try {
+            log('omg save: preparing database', { folders: folders.length });
             const tracks = folders.reduce((all, folder) => [...all, ...folder.tracks], [] as Track[]);
             const maxId = tracks.reduce((max, track) => Math.max(max, track.id), 0);
             this.trackCount = maxId;
             this.dataLength = TITLE_RECORD_SIZE;
             this.dataOffset = FILE_HEADER_SIZE + OBJECT_POINTER_SIZE + OBJECT_HEADER_SIZE;
             this.dbView = new DataView(this.create04CNTINF(tracks, folders));
+            const entries = this.createTrackEntries(tracks, folders);
+            log('omg save: generated database buffers', { tracks: tracks.length, maxId, elapsed: elapsed(start) });
+
+            for (const entry of entries) {
+                try {
+                    log('omg save: updating OMA metadata if needed', { id: entry.id, name: entry.name });
+                    await this.updateOmaFileMetadata(entry);
+                } catch (e) {
+                    warn(`omg save: unable to update OMA metadata for track ${entry.id}`, e);
+                }
+            }
 
             await this.writeDatabaseFile(DB_FILE, this.dbView.buffer);
-            await this.writeDatabaseFile('00GTRLST.DAT', this.createObjectFile('GTLT', 'GTLB', 0, 0x50));
-            await this.writeDatabaseFile('01TREE01.DAT', this.createTreeFile(tracks));
-            await this.writeDatabaseFile('01TREE02.DAT', this.createGroupedTreeFile(tracks, track => track.artist || 'Unknown Artist'));
-            await this.writeDatabaseFile('01TREE03.DAT', this.createGroupedTreeFile(tracks, track => folders.find(folder => folder.tracks.includes(track))?.name || 'Unknown Album'));
-            await this.writeDatabaseFile('01TREE04.DAT', this.createGroupedTreeFile(tracks, track => this.trackInfo.get(track.id)?.genre || DEFAULT_GENRE));
-            await this.writeDatabaseFile('02TREINF.DAT', this.create02TREINF(tracks));
-            await this.writeDatabaseFile('03GINF01.DAT', this.createGroupedInfoFile(folders.map(folder => folder.name)));
-            await this.writeDatabaseFile('03GINF02.DAT', this.createGroupedInfoFile([...new Set(tracks.map(track => track.artist || 'Unknown Artist'))]));
-            await this.writeDatabaseFile('03GINF03.DAT', this.createGroupedInfoFile(folders.map(folder => folder.name)));
-            await this.writeDatabaseFile('03GINF04.DAT', this.createGroupedInfoFile([...new Set(tracks.map(track => this.trackInfo.get(track.id)?.genre || DEFAULT_GENRE))]));
-            await this.writeDatabaseFile('05CIDLST.DAT', this.createObjectFile('CIDL', 'CILB', maxId, 0x30));
+            await this.writeDatabaseFile('00gtrlst.dat', this.create00GTRLST());
+            await this.writeDatabaseFile('01tree01.dat', this.create01TREE01(entries));
+            await this.writeDatabaseFile('01tree02.dat', this.create01TREE02(entries));
+            await this.writeDatabaseFile('01tree03.dat', this.create01TREE03(entries));
+            await this.writeDatabaseFile('01tree04.dat', this.create01TREE04(entries));
+            await this.writeDatabaseFile('01tree22.dat', this.createStaticTreeFile(0x10, 0x10));
+            await this.writeDatabaseFile('01tree2D.dat', this.create01TREE2D(entries));
+            await this.writeDatabaseFile('02treinf.dat', this.create02TREINF(entries));
+            await this.writeDatabaseFile('03ginf01.dat', this.create03GINF01(entries));
+            await this.writeDatabaseFile('03ginf02.dat', this.create03GINF02(entries));
+            await this.writeDatabaseFile('03ginf03.dat', this.create03GINF03(entries));
+            await this.writeDatabaseFile('03ginf04.dat', this.create03GINF04(entries));
+            await this.writeDatabaseFile('03ginf22.dat', this.create03GINF22());
+            await this.writeDatabaseFile('03ginf2D.dat', this.create03GINF2D(entries));
+            await this.writeDatabaseFile('04patlst.dat', this.create04PATLST(maxId));
+            await this.writeDatabaseFile('05cidlst.dat', this.createObjectFile('CIDL', 'CILB', maxId, 0x30));
+            log('omg save: database files written', { elapsed: elapsed(start) });
 
             this.tracks.clear();
             for (const track of tracks) {
@@ -233,10 +289,9 @@ export class OmgDatabase implements Database {
 
             return true;
         } catch (e) {
-            console.error(e);
+            console.error('Failed to write OMGAUDIO database', e);
+            throw e;
         }
-
-        return false;
     }
 
     public async getNextTrackId(): Promise<number> {
@@ -273,19 +328,24 @@ export class OmgDatabase implements Database {
     }
 
     public async writeFile(id: number, file: File, duration: number, frames: number): Promise<Track | undefined> {
+        const start = performance.now();
         try {
+            log('omg upload: reading tags', { id, file: file.name, size: file.size });
             const tags = await readTags(await file.slice(0, 128 * 1024).arrayBuffer());
             const name = tags.title || 'unknown title';
             const artist = tags.artist || 'unknown artist';
             const genre = tags.genre || DEFAULT_GENRE;
             const track: Track = { id, name, artist, file: file.name || `${artist} - ${name}.mp3` };
             const tagSize = await this.getId3Size(file);
+            log('omg upload: opening title folder', { id, tagSize, duration, frames, elapsed: elapsed(start) });
             const folder = await this.getTitleFolderHandle(id, true);
             const output = await getFileHandle(folder, getTitleFileName(id), { create: true });
 
+            log('omg upload: writing OMA file', { id, folder: getTitleFolderName(id), file: getTitleFileName(id) });
             await this.writeOmaFile(output, file, tagSize, { ...track, genre, duration, frames });
+            log('omg upload: OMA file written', { id, elapsed: elapsed(start) });
             this.tracks.set(id, track);
-            this.trackInfo.set(id, { duration, frames, genre });
+            this.trackInfo.set(id, { duration, frames, genre, fileProperties: OMA_FILE_PROPERTIES });
             this.reservedIds.delete(id);
             return track;
         } catch (e) {
@@ -393,9 +453,13 @@ export class OmgDatabase implements Database {
     }
 
     protected async writeOmaFile(fileHandle: FileSystemFileHandle, file: File, tagSize: number, data: Track & { genre: string, duration: number, frames: number }): Promise<void> {
+        const start = performance.now();
         const writable = await fileHandle.createWritable({ keepExistingData: false });
+        log('omg upload: writable opened', { id: data.id, file: fileHandle.name });
         await writable.write(this.createOmaHeader(data));
         const reader = this.createOmaAudioStream(data.id, file.slice(tagSize).stream(), file.size - tagSize).getReader();
+        let bytes = OMA_TAG_SIZE + OMA_SECOND_HEADER_SIZE;
+        let chunks = 0;
 
         while (true) {
             const { value, done } = await reader.read();
@@ -403,9 +467,68 @@ export class OmgDatabase implements Database {
                 break;
             }
             await writable.write(value);
+            bytes += value.byteLength;
+            chunks++;
         }
 
         await writable.close();
+        log('omg upload: writable closed', { id: data.id, bytes, chunks, elapsed: elapsed(start) });
+    }
+
+    protected async updateOmaFileMetadata(entry: OmgTrackEntry): Promise<void> {
+        const fileHandle = await this.getTitleFileHandle(entry.id);
+        const file = await fileHandle?.getFile();
+        if (!file) {
+            return;
+        }
+
+        const audioOffset = await this.getOmaAudioOffset(file);
+        const headerLength = OMA_TAG_SIZE + OMA_SECOND_HEADER_SIZE;
+        if (audioOffset !== headerLength) {
+            return;
+        }
+
+        const current = new Uint8Array(await file.slice(0, headerLength).arrayBuffer());
+        if (this.getOmaHeaderTag(current, TITLE_TAG) === entry.name
+            && this.getOmaHeaderTag(current, ARTIST_TAG) === entry.artist
+            && this.getOmaHeaderTag(current, GENRE_TAG) === entry.genre) {
+            return;
+        }
+
+        const header = this.createOmaHeader(entry);
+        const next = new Uint8Array(header);
+
+        const writable = await fileHandle.createWritable({ keepExistingData: false });
+        await writable.write(header);
+        await writable.write(file.slice(audioOffset));
+        await writable.close();
+    }
+
+    protected getOmaHeaderTag(header: Uint8Array, tag: string): string | undefined {
+        const tagBytes = new TextEncoder().encode(tag);
+        const offset = this.findBytes(header, tagBytes);
+        if (offset < 0 || offset + 11 > header.byteLength) {
+            return undefined;
+        }
+
+        const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+        const length = view.getUint32(offset + 4);
+        const textLength = length - 1;
+        const textOffset = offset + 11;
+        if (length < 1 || textOffset + textLength > header.byteLength) {
+            return undefined;
+        }
+
+        return new TextDecoder('UTF-16BE').decode(header.slice(textOffset, textOffset + textLength)).replace(/\0+$/, '');
+    }
+
+    protected findBytes(data: Uint8Array, pattern: Uint8Array): number {
+        for (let index = 0; index <= data.byteLength - pattern.byteLength; index++) {
+            if (pattern.every((byte, offset) => data[index + offset] === byte)) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     protected createOmaHeader(track: Track & { genre: string, duration: number, frames: number }): ArrayBuffer {
@@ -524,10 +647,88 @@ export class OmgDatabase implements Database {
     }
 
     protected async writeDatabaseFile(name: string, data: ArrayBuffer): Promise<void> {
-        const handle = await getFileHandle(this.rootFolder, name, { create: true });
+        const bytes = new Uint8Array(data);
+        try {
+            const existing = await this.getDatabaseFileHandle(name, false);
+            const file = await existing.getFile();
+            const current = new Uint8Array(await file.arrayBuffer());
+            if (this.bytesEqual(current, bytes)) {
+                return;
+            }
+        } catch (e) {
+            // File does not exist yet; create it below.
+        }
+
+        const handle = await this.getDatabaseFileHandle(name, true);
+        log('omg save: backing up database file', { name });
+        await this.backupDatabaseFile(handle);
+        log('omg save: writing database file', { name, bytes: data.byteLength });
         const writable = await handle.createWritable({ keepExistingData: false });
         await writable.write(data);
         await writable.close();
+        log('omg save: wrote database file', { name });
+    }
+
+    protected async backupDatabaseFile(source: FileSystemFileHandle): Promise<void> {
+        const name = source.name;
+        let backupFolder: FileSystemDirectoryHandle;
+        try {
+            backupFolder = await this.rootFolder.getDirectoryHandle(BACKUP_FOLDER, { create: true });
+        } catch (e) {
+            throw new Error(`Unable to open OMGAUDIO backup folder ${BACKUP_FOLDER}: ${this.formatError(e)}`);
+        }
+
+        try {
+            const file = await source.getFile();
+            const target = await backupFolder.getFileHandle(name, { create: true });
+            const writable = await target.createWritable({ keepExistingData: false });
+            await writable.write(await file.arrayBuffer());
+            await writable.close();
+            log('omg save: backed up database file', { name, bytes: file.size });
+        } catch (e) {
+            throw new Error(`Unable to back up OMGAUDIO/${name}: ${this.formatError(e)}`);
+        }
+    }
+
+    protected formatError(error: unknown): string {
+        if (error instanceof Error) {
+            return error.message || error.name;
+        }
+        return String(error);
+    }
+
+    protected async getDatabaseFileHandle(name: string, create: boolean): Promise<FileSystemFileHandle> {
+        try {
+            return await this.rootFolder.getFileHandle(name);
+        } catch (e) { }
+
+        const lower = name.toLowerCase();
+        if (lower !== name) {
+            try {
+                return await this.rootFolder.getFileHandle(lower);
+            } catch (e) { }
+        }
+
+        const upper = name.toUpperCase();
+        if (upper !== name) {
+            try {
+                return await this.rootFolder.getFileHandle(upper);
+            } catch (e) { }
+        }
+
+        return this.rootFolder.getFileHandle(name, { create });
+    }
+
+    protected bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+        if (left.byteLength !== right.byteLength) {
+            return false;
+        }
+        for (let i = 0; i < left.byteLength; i++) {
+            if (left[i] !== right[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     protected create04CNTINF(tracks: Track[], folders: Folder[]): ArrayBuffer {
@@ -536,89 +737,334 @@ export class OmgDatabase implements Database {
         const view = new DataView(data);
         for (const track of tracks) {
             const folder = folders.find(folder => folder.tracks.includes(track));
-            const info = this.trackInfo.get(track.id) || { duration: 0, frames: 0, genre: DEFAULT_GENRE };
+            const info = this.trackInfo.get(track.id) || { duration: 0, frames: 0, genre: DEFAULT_GENRE, fileProperties: OMA_FILE_PROPERTIES };
             const offset = FILE_HEADER_SIZE + OBJECT_POINTER_SIZE + OBJECT_HEADER_SIZE + ((track.id - 1) * TITLE_RECORD_SIZE);
             view.setUint16(offset + 2, 0xffff);
-            view.setUint32(offset + 4, info.duration);
-            view.setUint32(offset + 8, info.frames);
-            view.setUint16(offset + 12, 4);
+            view.setUint32(offset + 4, info.fileProperties);
+            view.setUint32(offset + 8, info.duration);
+            view.setUint16(offset + 12, 5);
             view.setUint16(offset + 14, 0x80);
             this.writeTagRecord(data, offset + 16, TITLE_TAG, track.name);
             this.writeTagRecord(data, offset + 16 + 0x80, ARTIST_TAG, track.artist);
             this.writeTagRecord(data, offset + 16 + 0x100, ALBUM_TAG, folder?.name || 'Unknown Album');
             this.writeTagRecord(data, offset + 16 + 0x180, GENRE_TAG, info.genre);
+            this.writeTagRecord(data, offset + 16 + 0x200, 'TSOP', '');
         }
         return data;
     }
 
-    protected create02TREINF(tracks: Track[]): ArrayBuffer {
-        const data = this.createObjectFile('GTIF', 'GTFB', 0x2d, 0x90);
+    protected createTrackEntries(tracks: Track[], folders: Folder[]): OmgTrackEntry[] {
+        return tracks.map(track => {
+            const info = this.trackInfo.get(track.id) || { duration: 0, frames: 0, genre: DEFAULT_GENRE, fileProperties: OMA_FILE_PROPERTIES };
+            return {
+                id: track.id,
+                name: track.name,
+                artist: track.artist || 'unknown artist (JS)',
+                album: folders.find(folder => folder.tracks.includes(track))?.name || 'unknown album (JS)',
+                genre: info.genre || DEFAULT_GENRE,
+                duration: info.duration,
+                frames: info.frames,
+                fileProperties: info.fileProperties
+            };
+        });
+    }
+
+    protected create00GTRLST(): ArrayBuffer {
+        const sysb = this.createObject('SYSB', 1, 0x50, 0x70, 0xd0000000, 0);
+        const gtlb = this.createObject('GTLB', 0x2d, 0x50, 0xe20, 6, 0x04000000);
+        const view = new DataView(gtlb.buffer);
+        const write = (index: number, fileRef: number, unknown: number, tags: string[], extra = ''): void => {
+            const offset = OBJECT_HEADER_SIZE + index * 0x50;
+            view.setUint16(offset, fileRef);
+            view.setUint16(offset + 2, unknown);
+            view.setUint16(offset + 16, tags.length);
+            tags.forEach((tag, tagIndex) => gtlb.set(new TextEncoder().encode(tag), offset + 20 + tagIndex * 4));
+            gtlb.set(new TextEncoder().encode(extra), offset + 48);
+        };
+        write(0, 1, 1, ['']);
+        write(1, 2, 3, [ARTIST_TAG]);
+        write(2, 3, 3, [ALBUM_TAG]);
+        write(3, 4, 3, [GENRE_TAG]);
+        write(4, 0x22, 2, []);
+        write(5, 0x2d, 3, [ARTIST_TAG, ALBUM_TAG], 'TRNOTTCCTTCC');
+        let index = 6;
+        for (let fileRef = 5; fileRef <= 44; fileRef++) {
+            if (fileRef !== 34) {
+                write(index++, fileRef, 0, []);
+            }
+        }
+        return this.createFileWithFixedObjects('GTLT', [
+            { magic: 'SYSB', offset: 0x30, data: sysb },
+            { magic: 'GTLB', offset: 0xa0, data: gtlb }
+        ]);
+    }
+
+    protected create01TREE01(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.artist, entry => entry.album, entry => entry.name);
+        return this.createGroupedTreeFile(sorted, entry => `${entry.artist}/${entry.album}`);
+    }
+
+    protected create01TREE02(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.artist, entry => entry.name);
+        return this.createGroupedTreeFile(sorted, entry => entry.artist);
+    }
+
+    protected create01TREE03(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.album, entry => entry.name);
+        return this.createGroupedTreeFile(sorted, entry => entry.album);
+    }
+
+    protected create01TREE04(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.genre, entry => entry.name);
+        return this.createGroupedTreeFile(sorted, entry => entry.genre);
+    }
+
+    protected create01TREE2D(entries: OmgTrackEntry[]): ArrayBuffer {
+        const { sorted, groups } = this.createArtistAlbumGroups(entries);
+        return this.createTreeFile(sorted.map(entry => entry.id), groups);
+    }
+
+    protected create02TREINF(entries: OmgTrackEntry[]): ArrayBuffer {
+        const data = this.createObjectFile('GTIF', 'GTFB', 0x2d, 0x90, 0x1f00);
         const view = new DataView(data);
-        const total = tracks.reduce((sum, track) => sum + (this.trackInfo.get(track.id)?.duration || 0), 0);
+        const total = entries.reduce((sum, entry) => sum + entry.duration, 0);
         const base = FILE_HEADER_SIZE + OBJECT_POINTER_SIZE + OBJECT_HEADER_SIZE;
         for (let i = 0; i < 4; i++) {
-            view.setUint32(base + (i * 0x90), total);
+            this.writeGPFBRecord(data, base + (i * 0x90), 0x90, total, '');
         }
+        this.writeGPFBRecord(data, base + (0x21 * 0x90), 0x90, 0, '');
+        this.writeGPFBRecord(data, base + (0x2c * 0x90), 0x90, total, 'STD_TPE1');
         return data;
     }
 
-    protected createTreeFile(tracks: Track[]): ArrayBuffer {
-        return this.createTreeObjects(tracks.map(track => track.id), [{ id: 1, first: 1 }]);
+    protected create03GINF01(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.artist, entry => entry.album, entry => entry.name);
+        const groups = this.groupEntries(sorted, entry => `${entry.artist}/${entry.album}`);
+        return this.createGPIF(groups.map(group => this.createAlbumInfoRecord(group.key, group.name, group.items[0]?.artist || '', group.items[0]?.genre || DEFAULT_GENRE)), 0x310);
     }
 
-    protected createGroupedTreeFile(tracks: Track[], getGroup: (track: Track) => string): ArrayBuffer {
-        const ids: number[] = [];
-        const groups: { id: number, first: number }[] = [];
-        let lastGroup = '';
-        let groupId = 1;
-        for (const track of tracks) {
-            const group = getGroup(track);
-            if (group !== lastGroup) {
-                groups.push({ id: groupId++, first: ids.length + 1 });
-                lastGroup = group;
-            }
-            ids.push(track.id);
-        }
-        return this.createTreeObjects(ids, groups);
+    protected create03GINF02(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.artist, entry => entry.name);
+        const groups = this.groupEntries(sorted, entry => entry.artist);
+        return this.createGPIF(groups.map(group => this.createInfoRecord(group.key, group.name)), 0x90);
     }
 
-    protected createTreeObjects(ids: number[], groups: { id: number, first: number }[]): ArrayBuffer {
-        const gplb = new Uint8Array(OBJECT_HEADER_SIZE + groups.length * 8);
+    protected create03GINF03(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.album, entry => entry.name);
+        const groups = this.groupEntries(sorted, entry => entry.album);
+        return this.createGPIF(groups.map(group => this.createInfoRecord(0, group.name)), 0x90);
+    }
+
+    protected create03GINF04(entries: OmgTrackEntry[]): ArrayBuffer {
+        const sorted = this.sortEntries(entries, entry => entry.genre, entry => entry.name);
+        const groups = this.groupEntries(sorted, entry => entry.genre);
+        return this.createGPIF(groups.map((group, index) => this.createInfoRecord(index + 1, group.name)), 0x90);
+    }
+
+    protected create03GINF22(): ArrayBuffer {
+        return this.createGPIF([], 0x310);
+    }
+
+    protected create03GINF2D(entries: OmgTrackEntry[]): ArrayBuffer {
+        const { records } = this.createArtistAlbumGroups(entries);
+        return this.createGPIF(records, 0x110);
+    }
+
+    protected create04PATLST(maxId: number): ArrayBuffer {
+        return this.createObjectFile('PALT', 'PATH', maxId, TITLE_RECORD_SIZE);
+    }
+
+    protected createGroupedTreeFile(entries: OmgTrackEntry[], getGroup: (entry: OmgTrackEntry) => string): ArrayBuffer {
+        const groups = this.groupEntries(entries, getGroup).map((group, index) => ({ id: index + 1, first: group.first }));
+        return this.createTreeFile(entries.map(entry => entry.id), groups);
+    }
+
+    protected createStaticTreeFile(gplbLength: number, tplbLength: number): ArrayBuffer {
+        const gplb = this.createObject('GPLB', 0, 8, gplbLength, 0, 0);
+        const tplb = this.createObject('TPLB', 0, 2, tplbLength, 0, 0);
+        return this.createFileWithFixedObjects('TREE', [
+            { magic: 'GPLB', offset: TREE_GPLB_OFFSET, data: gplb },
+            { magic: 'TPLB', offset: TREE_GPLB_OFFSET + gplbLength, data: tplb }
+        ]);
+    }
+
+    protected createTreeFile(ids: number[], groups: { id: number, first: number, kind?: number }[]): ArrayBuffer {
+        const tplbLength = Math.ceil((OBJECT_HEADER_SIZE + ids.length * 2) / 16) * 16;
+        const gplb = this.createObject('GPLB', groups.length, 8, TREE_GPLB_LENGTH, groups.length, 0);
         const gplbView = new DataView(gplb.buffer);
-        gplb.set(new TextEncoder().encode('GPLB'), 0);
-        gplbView.setUint16(4, groups.length);
-        gplbView.setUint16(6, 8);
         groups.forEach((group, index) => {
             const offset = OBJECT_HEADER_SIZE + index * 8;
             gplbView.setUint16(offset, group.id);
-            gplbView.setUint16(offset + 2, 0x0100);
+            gplbView.setUint16(offset + 2, group.kind === 2 ? 0x0200 : 0x0100);
             gplbView.setUint16(offset + 4, group.first);
         });
-        const tplb = new Uint8Array(OBJECT_HEADER_SIZE + ids.length * 2);
+
+        const tplb = this.createObject('TPLB', ids.length, 2, tplbLength, ids.length, 0);
         const tplbView = new DataView(tplb.buffer);
-        tplb.set(new TextEncoder().encode('TPLB'), 0);
-        tplbView.setUint16(4, ids.length);
-        tplbView.setUint16(6, 2);
         ids.forEach((id, index) => tplbView.setUint16(OBJECT_HEADER_SIZE + index * 2, id));
-        return this.createFileWithObjects('TREE', [{ magic: 'GPLB', data: gplb }, { magic: 'TPLB', data: tplb }]);
+
+        return this.createFileWithFixedObjects('TREE', [
+            { magic: 'GPLB', offset: TREE_GPLB_OFFSET, data: gplb },
+            { magic: 'TPLB', offset: TREE_TPLB_OFFSET, data: tplb }
+        ]);
     }
 
-    protected createGroupedInfoFile(names: string[]): ArrayBuffer {
-        const data = this.createObjectFile('GPIF', 'GPFB', names.length, 0x90);
-        names.forEach((name, index) => {
-            const offset = FILE_HEADER_SIZE + OBJECT_POINTER_SIZE + OBJECT_HEADER_SIZE + index * 0x90;
-            this.writeTagRecord(data, offset + 16, TITLE_TAG, name);
-        });
+    protected createGPIF(records: Uint8Array[], recordSize: number): ArrayBuffer {
+        const data = this.createObjectFile('GPIF', 'GPFB', records.length, recordSize);
+        const bytes = new Uint8Array(data);
+        records.forEach((record, index) => bytes.set(record, FILE_HEADER_SIZE + OBJECT_POINTER_SIZE + OBJECT_HEADER_SIZE + index * recordSize));
         return data;
     }
 
-    protected createObjectFile(fileMagic: string, objectMagic: string, count: number, recordSize: number): ArrayBuffer {
-        const object = new Uint8Array(OBJECT_HEADER_SIZE + count * recordSize);
+    protected createInfoRecord(key: number, name: string): Uint8Array {
+        const record = new Uint8Array(0x90);
+        this.writeGPFBRecord(record.buffer, 0, 0x90, key, name);
+        return record;
+    }
+
+    protected createAlbumInfoRecord(key: number, album: string, artist: string, genre: string): Uint8Array {
+        const record = new Uint8Array(0x310);
+        const view = new DataView(record.buffer);
+        view.setUint32(8, key);
+        view.setUint16(12, 6);
+        view.setUint16(14, 0x80);
+        this.writeTagRecord(record.buffer, 16, TITLE_TAG, album);
+        this.writeTagRecord(record.buffer, 16 + 0x80, ARTIST_TAG, artist);
+        this.writeTagRecord(record.buffer, 16 + 0x100, GENRE_TAG, genre);
+        this.writeTagRecord(record.buffer, 16 + 0x180, 'TSOP', '');
+        this.writeTagRecord(record.buffer, 16 + 0x200, 'PICP', '');
+        this.writeTagRecord(record.buffer, 16 + 0x280, 'PIC0', '');
+        return record;
+    }
+
+    protected createSortInfoRecord(key: number, value: string): Uint8Array {
+        const record = new Uint8Array(0x110);
+        const view = new DataView(record.buffer);
+        view.setUint32(8, key);
+        view.setUint16(12, 2);
+        view.setUint16(14, 0x80);
+        this.writeTagRecord(record.buffer, 16, TITLE_TAG, value);
+        this.writeTagRecord(record.buffer, 16 + 0x80, 'XSOT', value);
+        return record;
+    }
+
+    protected writeGPFBRecord(buffer: ArrayBuffer, offset: number, recordSize: number, key: number, name: string): void {
+        const view = new DataView(buffer);
+        view.setUint32(offset + 8, key);
+        view.setUint16(offset + 12, 1);
+        view.setUint16(offset + 14, 0x80);
+        this.writeTagRecord(buffer, offset + 16, TITLE_TAG, name);
+    }
+
+    protected createArtistAlbumGroups(entries: OmgTrackEntry[]): { sorted: OmgTrackEntry[], groups: { id: number, first: number, kind?: number }[], records: Uint8Array[] } {
+        const sorted = this.sortEntries(entries, entry => entry.artist, entry => entry.album, entry => entry.name);
+        const artists: string[] = [];
+        const albums: { artist: string, album: string, first: number, key: number }[] = [];
+        const albumsPerArtist: number[] = [];
+        let lastArtist = '';
+        let lastAlbum = '';
+        let albumCount = 0;
+
+        sorted.forEach((entry, index) => {
+            if (entry.album !== lastAlbum) {
+                if (entry.artist !== lastArtist) {
+                    artists.push(entry.artist);
+                    if (albums.length > 0) {
+                        albumsPerArtist.push(albumCount);
+                    }
+                    lastArtist = entry.artist;
+                    albumCount = 0;
+                }
+                albums.push({ artist: entry.artist, album: entry.album, first: index + 1, key: entry.duration });
+                lastAlbum = entry.album;
+                albumCount++;
+            } else {
+                albums[albums.length - 1].key += entry.duration;
+            }
+        });
+        if (albums.length > 0) {
+            albumsPerArtist.push(albumCount);
+        }
+
+        const groups: { id: number, first: number, kind?: number }[] = [{ id: 1, first: 0 }];
+        const records = [this.createSortInfoRecord(0, '')];
+        let albumIndex = 0;
+        artists.forEach((artist, artistIndex) => {
+            groups.push({ id: artistIndex + albumIndex + 2, first: 0 });
+            records.push(this.createSortInfoRecord(0, artist));
+            for (let i = 0; i < albumsPerArtist[artistIndex]; i++) {
+                const album = albums[albumIndex];
+                groups.push({ id: artistIndex + albumIndex + 3, first: album.first, kind: 2 });
+                records.push(this.createSortInfoRecord(album.key, album.album));
+                albumIndex++;
+            }
+        });
+
+        return { sorted, groups, records };
+    }
+
+    protected groupEntries(entries: OmgTrackEntry[], getGroup: (entry: OmgTrackEntry) => string): { name: string, first: number, key: number, items: OmgTrackEntry[] }[] {
+        const groups: { name: string, first: number, key: number, items: OmgTrackEntry[] }[] = [];
+        for (const entry of entries) {
+            const name = getGroup(entry) || EMPTY_ARTIST_ALBUM_LABEL;
+            const last = groups[groups.length - 1];
+            if (!last || last.name !== name) {
+                groups.push({ name, first: groups.reduce((count, group) => count + group.items.length, 0) + 1, key: entry.duration, items: [entry] });
+            } else {
+                last.key += entry.duration;
+                last.items.push(entry);
+            }
+        }
+        return groups;
+    }
+
+    protected sortEntries(entries: OmgTrackEntry[], ...getters: ((entry: OmgTrackEntry) => string)[]): OmgTrackEntry[] {
+        return [...entries].sort((a, b) => {
+            for (const getter of getters) {
+                const result = getter(a).localeCompare(getter(b), undefined, { sensitivity: 'base' });
+                if (result !== 0) {
+                    return result;
+                }
+            }
+            return a.id - b.id;
+        });
+    }
+
+    protected createObject(magic: string, count: number, recordSize: number, objectSize = OBJECT_HEADER_SIZE + count * recordSize, complement1?: number, complement2?: number): Uint8Array {
+        const object = new Uint8Array(objectSize);
         const view = new DataView(object.buffer);
-        object.set(new TextEncoder().encode(objectMagic), 0);
+        object.set(new TextEncoder().encode(magic), 0);
         view.setUint16(4, count);
         view.setUint16(6, recordSize);
+        if (complement1 !== undefined) {
+            view.setUint32(8, complement1);
+        }
+        if (complement2 !== undefined) {
+            view.setUint32(12, complement2);
+        }
+        return object;
+    }
+
+    protected createObjectFile(fileMagic: string, objectMagic: string, count: number, recordSize: number, objectSize?: number): ArrayBuffer {
+        const object = this.createObject(objectMagic, count, recordSize, objectSize);
         return this.createFileWithObjects(fileMagic, [{ magic: objectMagic, data: object }]);
+    }
+
+    protected createFileWithFixedObjects(fileMagic: string, objects: { magic: string, offset: number, data: Uint8Array }[]): ArrayBuffer {
+        const size = objects.reduce((max, object) => Math.max(max, object.offset + object.data.byteLength), FILE_HEADER_SIZE + objects.length * OBJECT_POINTER_SIZE);
+        const data = new Uint8Array(size);
+        const view = new DataView(data.buffer);
+        data.set(new TextEncoder().encode(fileMagic), 0);
+        data.set([1, 1, 0, 0], 4);
+        view.setUint8(8, objects.length);
+        objects.forEach((object, index) => {
+            const pointer = FILE_HEADER_SIZE + index * OBJECT_POINTER_SIZE;
+            data.set(new TextEncoder().encode(object.magic), pointer);
+            view.setUint32(pointer + 4, object.offset);
+            view.setUint32(pointer + 8, object.data.byteLength);
+            data.set(object.data, object.offset);
+        });
+        return data.buffer;
     }
 
     protected createFileWithObjects(fileMagic: string, objects: { magic: string, data: Uint8Array }[]): ArrayBuffer {

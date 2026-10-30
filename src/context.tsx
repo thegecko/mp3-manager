@@ -2,6 +2,7 @@ import { createContext } from 'preact';
 import { useContext, useState } from 'preact/hooks';
 import { PropsWithChildren } from 'preact/compat';
 import type { Database, Folder } from './database/database-detector';
+import { elapsed, error, log } from './log';
 
 export const DbContext = createContext({
     db: undefined as Database | undefined,
@@ -49,9 +50,22 @@ export const ContextProvider = (props: PropsWithChildren) => {
     const updateFolders = async (folders: Folder[]) => {
         await busyWrapper(async () => {
             if (db) {
-                await db.setFolders(folders);
+                const start = performance.now();
+                try {
+                    log('database save: start', { db: db.type, folders: folders.length });
+                    const saved = await db.setFolders(folders);
+                    if (!saved) {
+                        throw new Error('Database writer returned false');
+                    }
+                    log('database save: writer complete', { elapsed: elapsed(start) });
+                } catch (e) {
+                    error('database save: failed', { elapsed: elapsed(start), error: e });
+                    alert(`Unable to save changes to the device: ${formatError(e)}`);
+                }
+                log('database save: reloading folders', { elapsed: elapsed(start) });
                 folders = await db.getFolders();
                 setFolders(folders);
+                log('database save: complete', { folders: folders.length, elapsed: elapsed(start) });
             }
         });
     };
@@ -73,3 +87,10 @@ export const useBusy = () => useContext(BusyContext);
 export const useFs = () => useContext(FileSystemContext);
 export const useDb = () => useContext(DbContext);
 export const useFolders = () => useContext(FoldersContext);
+
+const formatError = (error: unknown): string => {
+    if (error instanceof Error) {
+        return error.message || error.name;
+    }
+    return String(error);
+};

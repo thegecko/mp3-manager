@@ -1,6 +1,7 @@
 import { useEffect } from 'preact/hooks';
 import { detectDatabase } from './database/database-detector';
 import { useBusy, useDb, useFs } from './context';
+import { elapsed, log, warn } from './log';
 import { primaryButtonStyle, statusPillStyle } from './styles';
 
 const DRIVE_TIMEOUT = 2000;
@@ -19,6 +20,7 @@ export const DriveSelect = () => {
                     timeout = setTimeout(checkConnection, DRIVE_TIMEOUT);
                 }
             } catch (e) {
+                warn('drive: connection check failed; disconnecting', e);
                 onDisconnect();
             }
         };
@@ -27,14 +29,20 @@ export const DriveSelect = () => {
     }, [fs]);
 
     const onConnect = async () => {
+        const start = performance.now();
+        log('drive: select requested');
         const fileSystem = await window.showDirectoryPicker({ startIn: 'music', mode: 'readwrite' });
         if (fileSystem) {
             try {
+                log('drive: selected folder', { name: fileSystem.name, elapsed: elapsed(start) });
                 updateBusy(true);
                 const database = await detectDatabase(fileSystem);
+                log('drive: database detected', { type: database.type, elapsed: elapsed(start) });
                 updateFs(fileSystem);
                 updateDb(database);
+                log('drive: connected', { type: database.type, name: fileSystem.name, elapsed: elapsed(start) });
             } catch (e) {
+                warn('drive: connect failed', e);
                 alert(e);
             } finally {
                 updateBusy(false);
@@ -43,6 +51,7 @@ export const DriveSelect = () => {
     };
 
     const onDisconnect = () => {
+        log('drive: disconnect requested');
         updateFs(undefined);
         updateDb(undefined);
     };

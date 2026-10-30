@@ -1,5 +1,6 @@
 import { isEsys, EsysDatabase } from './esys-database';
 import { isOmg, OmgDatabase } from './omg-database';
+import { elapsed, log } from '../log';
 export interface Database {
     type: 'ESYS' | 'OMG';
     getFolders(): Promise<Folder[]>;
@@ -26,13 +27,22 @@ export interface Track {
 }
 
 export const detectDatabase = async (fileSystem: FileSystemDirectoryHandle): Promise<Database> => {
+    const start = performance.now();
+    log('database detect: start', { root: fileSystem.name });
     if (await isOmg(fileSystem)) {
-        return OmgDatabase.create(fileSystem);
+        log('database detect: OMGAUDIO folder found', { elapsed: elapsed(start) });
+        const database = await OmgDatabase.create(fileSystem);
+        log('database detect: loaded OMG database', { elapsed: elapsed(start) });
+        return database;
     }
 
     if (await isEsys(fileSystem)) {
-        return EsysDatabase.create(fileSystem);
+        log('database detect: ESYS folder found', { elapsed: elapsed(start) });
+        const database = await EsysDatabase.create(fileSystem);
+        log('database detect: loaded ESYS database', { elapsed: elapsed(start) });
+        return database;
     }
 
+    log('database detect: no supported database found', { elapsed: elapsed(start) });
     throw new Error('Not a valid mp3 folder');
 };

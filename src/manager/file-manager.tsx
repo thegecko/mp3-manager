@@ -10,6 +10,7 @@ import { useBusy, useDb, useFolders } from '../context';
 import type { Track } from '../database/database-detector';
 import { DriveSelect } from '../drive-select';
 import { footerStyle } from '../styles';
+import { elapsed, log, warn } from '../log';
 
 const TRACK_LABEL = 'Upload Track(s)';
 
@@ -103,14 +104,18 @@ export const FileManager = () => {
             throw new Error('No database');
         }
 
+        const start = performance.now();
         try {
+            log('drop upload: start');
             updateBusy(true);
 
             const newFolders = new Map<string, Track[]>();
             const newTracks: Track[] = [];
             if (isDataTransfer(card)) {
                 const files = await getFiles(card);
+                log('drop upload: files selected', { count: files.length, elapsed: elapsed(start) });
                 for (const { file, folder } of files) {
+                    log('drop upload: importing file', { file: file.name, folder });
                     const track = await createFile(db, file);
                     if (track) {
                         if (folder) {
@@ -122,7 +127,12 @@ export const FileManager = () => {
                 }
             }
             const folders = buildFolders(cards, { newFolders, newTracks });
+            log('drop upload: saving database', { folders: folders.length, elapsed: elapsed(start) });
             await updateFolders(folders);
+            log('drop upload: complete', { elapsed: elapsed(start) });
+        } catch (e) {
+            warn('drop upload: failed', { elapsed: elapsed(start), error: e });
+            alert(`Unable to import dropped file: ${e instanceof Error ? e.message || e.name : String(e)}`);
         } finally {
             updateBusy(false);
         }
@@ -224,12 +234,16 @@ export const FileManager = () => {
 
         const files = await window.showOpenFilePicker({ startIn: 'music', types: [{ accept: { 'audio/mpeg': `.${MP3_EXTENSION}` } }], multiple: true });
         if (files) {
+            const start = performance.now();
             try {
+                log('button upload: start', { handles: files.length });
                 updateBusy(true);
 
                 const tracks: Track[] = [];
                 for (const handle of files) {
+                    log('button upload: reading selected file', { name: handle.name });
                     const file = await handle.getFile();
+                    log('button upload: importing file', { file: file.name, size: file.size, type: file.type });
                     const track = await createFile(db, file);
 
                     if (track) {
@@ -247,8 +261,12 @@ export const FileManager = () => {
                             name: TRACK_LABEL
                         });
                         const folders = buildFolders(newCards, { newTracks: tracks });
+                        log('button upload: saving database', { tracks: tracks.length, folders: folders.length, elapsed: elapsed(start) });
                         await updateFolders(folders);
+                        log('button upload: complete', { elapsed: elapsed(start) });
                     }
+                } else {
+                    log('button upload: no tracks imported', { elapsed: elapsed(start) });
                 }
             } finally {
                 updateBusy(false);

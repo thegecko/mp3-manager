@@ -1,5 +1,5 @@
 
-import { useCallback, useMemo, useState } from 'preact/hooks';
+import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import { DndRoot } from '../dnd/root';
 import { FileContainer } from './file-container';
 import { File } from './file';
@@ -15,6 +15,7 @@ import { elapsed, log, warn } from '../log';
 const TRACK_LABEL = 'Upload Track(s)';
 
 const isDataTransfer = (item: any): item is DataTransfer => item.items !== undefined;
+const isInternalDrag = (item: any): item is { id: Card } => item?.id?.type === 'folder' || item?.id?.type === 'track' || item?.id?.type === 'new';
 
 export const FileManager = () => {
     const { db } = useDb();
@@ -22,6 +23,7 @@ export const FileManager = () => {
     const { updateBusy } = useBusy();
     const [cards, setCards] = useState([] as Card[]);
     const [collapsedFolder, setCollapsedFolder] = useState(undefined as number | undefined);
+    const pendingReorderCards = useRef<Card[] | undefined>();
 
     // Container handlers
     const onNew = useCallback(() => {
@@ -92,6 +94,7 @@ export const FileManager = () => {
         const newCards = [...cards];
         const deletedCards = newCards.splice(removeIndex, removeCount);
         newCards.splice(insertIndex, 0, ...deletedCards);
+        pendingReorderCards.current = newCards;
 
         requestedFrame = requestAnimationFrame(() => {
             setCards(newCards);
@@ -106,6 +109,16 @@ export const FileManager = () => {
 
         const start = performance.now();
         try {
+            if (isInternalDrag(card)) {
+                const reorderedCards = pendingReorderCards.current || cards;
+                pendingReorderCards.current = undefined;
+                updateBusy(true, 'Saving order...');
+                log('reorder: saving database', { cards: reorderedCards.length });
+                await updateFolders(buildFolders(reorderedCards));
+                log('reorder: complete', { elapsed: elapsed(start) });
+                return;
+            }
+
             log('drop upload: start');
             updateBusy(true, 'Reading dropped files...');
 

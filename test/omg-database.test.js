@@ -150,6 +150,26 @@ describe('OmgDatabase', () => {
         assert.ok(getFile(omg, '04patlst.dat'));
     });
 
+    it('writes album tree track order from the requested folder order', async () => {
+        const fileSystem = createOmgFixture([
+            { id: 1, title: 'One', artist: 'Artist A', album: 'Album A', data: firstTrack },
+            { id: 2, title: 'Two', artist: 'Artist A', album: 'Album A', data: secondTrack }
+        ]);
+        const database = await OmgDatabase.create(fileSystem);
+        const folders = await database.getFolders();
+
+        folders[0].tracks.reverse();
+        assert.equal(await database.setFolders(folders), true);
+
+        const omg = fileSystem.entriesMap.get('omgaudio');
+        const tree = getFile(omg, '01tree03.dat').data;
+
+        assert.deepEqual(readTreeIds(tree, 2), [2, 1]);
+
+        const reloaded = await database.getFolders();
+        assert.deepEqual(reloaded[0].tracks.map(track => track.id), [2, 1]);
+    });
+
     it('does not rewrite unchanged OMGAUDIO index files', async () => {
         const { database, fileSystem } = await createDatabase();
         const folders = await database.getFolders();
@@ -224,6 +244,13 @@ const getFile = (folder, name) => folder.entriesMap.get(name) || folder.entriesM
 const ascii = (data, offset, length) => new TextDecoder().decode(data.slice(offset, offset + length));
 const read16 = (data, offset) => new DataView(data.buffer, data.byteOffset, data.byteLength).getUint16(offset);
 const read32 = (data, offset) => new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(offset);
+const readTreeIds = (data, count) => {
+    const ids = [];
+    for (let i = 0; i < count; i++) {
+        ids.push(read16(data, 0x4040 + 16 + (i * 2)));
+    }
+    return ids;
+};
 const hasUtf16Text = (data, text) => {
     const encoded = new TextEncoder().encode([...text].map(char => `\0${char}`).join(''));
     return data.findIndex((_, index) => encoded.every((byte, offset) => data[index + offset] === byte)) >= 0;

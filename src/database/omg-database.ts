@@ -56,6 +56,9 @@ interface OmgTrackEntry {
     duration: number;
     frames: number;
     fileProperties: number;
+    folderIndex: number;
+    trackIndex: number;
+    uiIndex: number;
 }
 
 const QUERY_DVID_COMMAND = Uint8Array.from([
@@ -183,13 +186,31 @@ export class OmgDatabase implements Database {
         log('omg folders: scanning database', { trackCount: this.trackCount });
         const folders: Folder[] = [];
         const foldersByAlbum = new Map<string, Folder>();
+        const albumTreeIds = await this.getAlbumTreeTrackIds();
+        const seenIds = new Set<number>();
+        const idOrder: number[] = [];
+
+        if (albumTreeIds) {
+            for (const id of albumTreeIds) {
+                if (id >= 1 && id <= this.trackCount && !seenIds.has(id)) {
+                    seenIds.add(id);
+                    idOrder.push(id);
+                }
+            }
+        }
+
+        for (let id = 1; id <= this.trackCount; id++) {
+            if (!seenIds.has(id)) {
+                idOrder.push(id);
+            }
+        }
+
         let emptySlots = 0;
         let missingFiles = 0;
         this.tracks.clear();
 
-        for (let i = 0; i < this.trackCount; i++) {
-            const offset = this.dataOffset + (i * this.dataLength);
-            const id = i + 1;
+        for (const id of idOrder) {
+            const offset = this.dataOffset + ((id - 1) * this.dataLength);
             const tags = this.getContentTags(offset);
             const name = tags.get(TITLE_TAG) || '';
             const artist = tags.get(ARTIST_TAG) || '';
@@ -239,6 +260,37 @@ export class OmgDatabase implements Database {
         const tracks = folders.reduce((count, folder) => count + folder.tracks.length, 0);
         log('omg folders: scan complete', { folders: folders.length, tracks, emptySlots, missingFiles, elapsed: elapsed(start) });
         return folders;
+    }
+
+    protected async getAlbumTreeTrackIds(): Promise<number[] | undefined> {
+        try {
+            const handle = await getFileHandle(this.rootFolder, '01tree03.dat');
+            const file = await handle.getFile();
+            const buffer = await file.arrayBuffer();
+            if (buffer.byteLength < TREE_TPLB_OFFSET + OBJECT_HEADER_SIZE) {
+                return undefined;
+            }
+
+            const bytes = new Uint8Array(buffer);
+            const magic = new TextDecoder().decode(bytes.slice(TREE_TPLB_OFFSET, TREE_TPLB_OFFSET + 4));
+            if (magic !== 'TPLB') {
+                return undefined;
+            }
+
+            const view = new DataView(buffer);
+            const count = view.getUint16(TREE_TPLB_OFFSET + 4);
+            const recordSize = view.getUint16(TREE_TPLB_OFFSET + 6) || 2;
+            const ids: number[] = [];
+            for (let index = 0; index < count; index++) {
+                const offset = TREE_TPLB_OFFSET + OBJECT_HEADER_SIZE + (index * recordSize);
+                if (offset + 2 <= buffer.byteLength) {
+                    ids.push(view.getUint16(offset));
+                }
+            }
+            return ids;
+        } catch (e) {
+            return undefined;
+        }
     }
 
     public async setFolders(folders: Folder[]): Promise<boolean> {
@@ -754,17 +806,22 @@ export class OmgDatabase implements Database {
     }
 
     protected createTrackEntries(tracks: Track[], folders: Folder[]): OmgTrackEntry[] {
-        return tracks.map(track => {
+        return tracks.map((track, uiIndex) => {
             const info = this.trackInfo.get(track.id) || { duration: 0, frames: 0, genre: DEFAULT_GENRE, fileProperties: OMA_FILE_PROPERTIES };
+            const folderIndex = folders.findIndex(folder => folder.tracks.includes(track));
+            const folder = folderIndex >= 0 ? folders[folderIndex] : undefined;
             return {
                 id: track.id,
                 name: track.name,
                 artist: track.artist || 'unknown artist (JS)',
-                album: folders.find(folder => folder.tracks.includes(track))?.name || 'unknown album (JS)',
+                album: folder?.name || 'unknown album (JS)',
                 genre: info.genre || DEFAULT_GENRE,
                 duration: info.duration,
                 frames: info.frames,
-                fileProperties: info.fileProperties
+                fileProperties: info.fileProperties,
+                folderIndex: folderIndex >= 0 ? folderIndex : Number.MAX_SAFE_INTEGER,
+                trackIndex: folder ? folder.tracks.indexOf(track) : uiIndex,
+                uiIndex
             };
         });
     }
@@ -810,7 +867,7 @@ export class OmgDatabase implements Database {
     }
 
     protected create01TREE03(entries: OmgTrackEntry[]): ArrayBuffer {
-        const sorted = this.sortEntries(entries, entry => entry.album, entry => entry.name);
+        const sorted = this.sortEntries(entries, entry => entry.folderIndex, entry => entry.trackIndex);
         return this.createGroupedTreeFile(sorted, entry => entry.album);
     }
 
@@ -850,7 +907,7 @@ export class OmgDatabase implements Database {
     }
 
     protected create03GINF03(entries: OmgTrackEntry[]): ArrayBuffer {
-        const sorted = this.sortEntries(entries, entry => entry.album, entry => entry.name);
+        const sorted = this.sortEntries(entries, entry => entry.folderIndex, entry => entry.trackIndex);
         const groups = this.groupEntries(sorted, entry => entry.album);
         return this.createGPIF(groups.map(group => this.createInfoRecord(0, group.name)), 0x90);
     }
@@ -1018,15 +1075,19 @@ export class OmgDatabase implements Database {
         return groups;
     }
 
-    protected sortEntries(entries: OmgTrackEntry[], ...getters: ((entry: OmgTrackEntry) => string)[]): OmgTrackEntry[] {
+    protected sortEntries(entries: OmgTrackEntry[], ...getters: ((entry: OmgTrackEntry) => string | number)[]): OmgTrackEntry[] {
         return [...entries].sort((a, b) => {
             for (const getter of getters) {
-                const result = getter(a).localeCompare(getter(b), undefined, { sensitivity: 'base' });
+                const left = getter(a);
+                const right = getter(b);
+                const result = typeof left === 'number' && typeof right === 'number'
+                    ? left - right
+                    : String(left).localeCompare(String(right), undefined, { sensitivity: 'base' });
                 if (result !== 0) {
                     return result;
                 }
             }
-            return a.id - b.id;
+            return a.uiIndex - b.uiIndex;
         });
     }
 

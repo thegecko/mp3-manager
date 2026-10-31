@@ -1,13 +1,22 @@
-import type { Track } from '../database/database-detector';
+import type { Folder, Track } from '../database/database-detector';
 import { useBusy, useDb, useFolders } from '../context';
 import { primaryButtonStyle } from '../styles';
 import { createFile, MP3_EXTENSION, newFolder } from './util';
 import { elapsed, log } from '../log';
 
-const isMp3File = (entry: FileSystemDirectoryHandle | FileSystemFileHandle): entry is FileSystemFileHandle =>
-    (entry as FileSystemFileHandle).kind === 'file' && entry.name.endsWith(MP3_EXTENSION);
+export interface AddFolderProps {
+    onCreateFolder?: (name: string) => void | Promise<void>;
+}
 
-export const AddFolder = () => {
+interface SelectedFile {
+    handle: FileSystemFileHandle;
+    folder: string;
+}
+
+const isMp3File = (entry: FileSystemDirectoryHandle | FileSystemFileHandle): entry is FileSystemFileHandle =>
+    (entry as FileSystemFileHandle).kind === 'file' && entry.name.toLowerCase().endsWith(MP3_EXTENSION);
+
+export const AddFolder = ({ onCreateFolder }: AddFolderProps) => {
     const { db } = useDb();
     const { folders, updateFolders } = useFolders();
     const { updateBusy } = useBusy();
@@ -23,23 +32,49 @@ export const AddFolder = () => {
             try {
                 log('folder upload: start', { folder: folder.name });
                 updateBusy(true, `Reading folder: ${folder.name}`);
-                const tracks: Track[] = [];
-                for await (const [ name, entry ] of folder.entries()) {
-                    if (isMp3File(entry)) {
-                        updateBusy(true, `Importing: ${name}`);
-                        log('folder upload: importing file', { name, elapsed: elapsed(start) });
-                        const file = await entry.getFile();
-                        const track = await createFile(db, file);
-                        if (track) {
-                            tracks.push(track);
+                const selectedFiles: SelectedFile[] = [];
+
+                const collectFiles = async (directory: FileSystemDirectoryHandle) => {
+                    for await (const [ name, entry ] of directory.entries()) {
+                        if (isMp3File(entry)) {
+                            selectedFiles.push({ handle: entry, folder: directory.name });
+                            log('folder upload: selected file', { folder: directory.name, name, elapsed: elapsed(start) });
                         }
                     }
+
+                    for await (const entry of directory.values()) {
+                        if (entry.kind === 'directory') {
+                            updateBusy(true, `Reading folder: ${entry.name}`);
+                            await collectFiles(entry);
+                        }
+                    }
+                };
+
+                await collectFiles(folder);
+
+                if (selectedFiles.length === 0) {
+                    throw new Error('No MP3 files found in the selected folder');
                 }
+
+                const tracksByFolder = new Map<string, Track[]>();
+                for (const [index, { handle, folder }] of selectedFiles.entries()) {
+                    updateBusy(true, `Importing ${index + 1}/${selectedFiles.length}: ${handle.name}`);
+                    log('folder upload: importing file', { folder, name: handle.name, index: index + 1, total: selectedFiles.length, elapsed: elapsed(start) });
+                    const file = await handle.getFile();
+                    const track = await createFile(db, file);
+                    if (track) {
+                        tracksByFolder.set(folder, [...(tracksByFolder.get(folder) || []), track]);
+                    }
+                }
+
+                const newFolders: Folder[] = [...tracksByFolder.entries()].map(([name, tracks]) => newFolder(name, tracks));
+
                 updateBusy(true, 'Saving database...');
-                log('folder upload: saving database', { folder: folder.name, tracks: tracks.length, elapsed: elapsed(start) });
-                folders.unshift(newFolder(folder.name, tracks));
-                await updateFolders(folders);
+                log('folder upload: saving database', { folder: folder.name, folders: newFolders.length, tracks: newFolders.reduce((count, folder) => count + folder.tracks.length, 0), elapsed: elapsed(start) });
+                await updateFolders([...newFolders, ...folders]);
                 log('folder upload: complete', { elapsed: elapsed(start) });
+            } catch (e) {
+                alert(`Unable to upload folder: ${e instanceof Error ? e.message || e.name : String(e)}`);
             } finally {
                 updateBusy(false);
             }
@@ -52,8 +87,12 @@ export const AddFolder = () => {
             return;
         }
 
-        folders.unshift(newFolder(name, []));
-        await updateFolders(folders);
+        if (db?.type === 'OMG' && onCreateFolder) {
+            await onCreateFolder(name);
+            return;
+        }
+
+        await updateFolders([newFolder(name, []), ...folders]);
     };
 
     return (

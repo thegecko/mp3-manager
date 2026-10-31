@@ -13,7 +13,7 @@ export default defineConfig({
         },
         terserOptions: {
             compress: {
-                drop_console: false,
+                drop_console: true,
                 passes: 3,
                 unsafe_arrows: true
             },

@@ -114,6 +114,9 @@ export const FileManager = () => {
             if (isDataTransfer(card)) {
                 const files = await getFiles(card);
                 log('drop upload: files selected', { count: files.length, elapsed: elapsed(start) });
+                if (files.length === 0) {
+                    throw new Error('No MP3 files found in the dropped item');
+                }
                 for (const [index, { file, folder }] of files.entries()) {
                     updateBusy(true, `Importing ${index + 1}/${files.length}: ${file.name}`);
                     log('drop upload: importing file', { file: file.name, folder });
@@ -324,6 +327,13 @@ export const FileManager = () => {
         }
     };
 
+    const onCreateFolder = (name: string) => {
+        setCards(prevCards => {
+            const lowestId = prevCards.reduce((lowest, card) => Math.min(lowest, card.id), -1);
+            return [{ id: lowestId - 1, type: 'folder', name }, ...prevCards];
+        });
+    };
+
     // Cards
     useMemo(() => {
         const cards = getCards(folders);
@@ -369,7 +379,7 @@ export const FileManager = () => {
                 </FileContainer>
             </DndRoot>
             <div style={footerStyle}>
-                <AddFolder />
+                <AddFolder onCreateFolder={onCreateFolder} />
                 <DriveSelect />
             </div>
         </>

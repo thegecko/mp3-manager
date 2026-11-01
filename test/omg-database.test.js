@@ -115,6 +115,8 @@ describe('OmgDatabase', () => {
         const { database, fileSystem } = await createDatabase();
         const folders = await database.getFolders();
 
+        folders[0].tracks.push({ id: 2, file: 'Three.mp3', name: 'Three', artist: 'Artist A' });
+
         assert.equal(await database.setFolders(folders), true);
 
         const omg = fileSystem.entriesMap.get('omgaudio');
@@ -168,6 +170,32 @@ describe('OmgDatabase', () => {
 
         const reloaded = await database.getFolders();
         assert.deepEqual(reloaded[0].tracks.map(track => track.id), [2, 1]);
+    });
+
+    it('does not rewrite OMA files when saving unchanged track metadata', async () => {
+        const fileSystem = createOmgFixture([
+            { id: 1, title: 'One', artist: 'Artist A', album: 'Album A', data: firstTrack },
+            { id: 2, title: 'Two', artist: 'Artist A', album: 'Album A', data: secondTrack }
+        ]);
+        const database = await OmgDatabase.create(fileSystem);
+        const folders = await database.getFolders();
+        const omg = fileSystem.entriesMap.get('omgaudio');
+        const titleFolder = await omg.getDirectoryHandle('10f00');
+        const omaWrites = [];
+
+        for (const name of ['10000001.oma', '10000002.oma']) {
+            const file = await titleFolder.getFileHandle(name);
+            const createWritable = file.createWritable.bind(file);
+            file.createWritable = async (...args) => {
+                omaWrites.push(name);
+                return createWritable(...args);
+            };
+        }
+
+        folders[0].tracks.reverse();
+        assert.equal(await database.setFolders(folders), true);
+
+        assert.deepEqual(omaWrites, []);
     });
 
     it('does not rewrite unchanged OMGAUDIO index files', async () => {

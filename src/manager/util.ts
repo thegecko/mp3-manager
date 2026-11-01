@@ -5,12 +5,19 @@ export const MP3_EXTENSION = 'mp3';
 export const NEW_ID = -99;
 const METADATA_TIMEOUT = 5000;
 const FILE_ENTRY_TIMEOUT = 5000;
+const PLAYLIST_EXTENSIONS = ['.m3u8', '.m3u'];
 
 const isFile = (entry: FileSystemEntry): entry is FileSystemFileEntry => entry.isFile;
 const isDirectory = (entry: FileSystemEntry): entry is FileSystemDirectoryEntry => entry.isDirectory;
 
 export interface FileAndFolder {
     file: File;
+    folder?: string;
+}
+
+export interface PlaylistAndFolder {
+    name: string;
+    text: string;
     folder?: string;
 }
 
@@ -55,9 +62,87 @@ export const newFolder = (name: string, tracks: Track[] = []): Folder => ({
     tracks
 });
 
+export const isPlaylistFileName = (name: string): boolean => PLAYLIST_EXTENSIONS.some(extension => name.toLowerCase().endsWith(extension));
+
+const normalisePlaylistEntry = (entry: string): string => {
+    const clean = entry.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    return clean.split('/').filter(Boolean).pop()?.toLowerCase() || clean.toLowerCase();
+};
+
+const playlistNames = (playlist: PlaylistAndFolder): string[] => playlist.text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !line.startsWith('#'))
+    .map(normalisePlaylistEntry)
+    .filter(Boolean);
+
+const folderKey = (folder?: string): string => folder || '';
+
+export const orderByFolderPlaylists = <T,>(items: T[], playlists: PlaylistAndFolder[], getName: (item: T) => string, getFolder: (item: T) => string | undefined): T[] => {
+    const playlistsByFolder = new Map<string, PlaylistAndFolder[]>();
+    for (const playlist of playlists) {
+        const key = folderKey(playlist.folder);
+        playlistsByFolder.set(key, [...(playlistsByFolder.get(key) || []), playlist]);
+    }
+
+    const orderForFolder = (folder?: string): Map<string, number> => {
+        const folderPlaylists = [...(playlistsByFolder.get(folderKey(folder)) || [])]
+            .sort((a, b) => {
+                const aIsM3u8 = a.name.toLowerCase().endsWith('.m3u8') ? 0 : 1;
+                const bIsM3u8 = b.name.toLowerCase().endsWith('.m3u8') ? 0 : 1;
+                return aIsM3u8 - bIsM3u8 || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+            });
+
+        const order = new Map<string, number>();
+        for (const playlist of folderPlaylists) {
+            for (const name of playlistNames(playlist)) {
+                if (!order.has(name)) {
+                    order.set(name, order.size);
+                }
+            }
+        }
+        return order;
+    };
+
+    const orderCache = new Map<string, Map<string, number>>();
+    const getOrder = (folder?: string): Map<string, number> => {
+        const key = folderKey(folder);
+        if (!orderCache.has(key)) {
+            orderCache.set(key, orderForFolder(folder));
+        }
+        return orderCache.get(key)!;
+    };
+
+    return items
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => {
+            const aFolder = getFolder(a.item);
+            const bFolder = getFolder(b.item);
+            if (folderKey(aFolder) !== folderKey(bFolder)) {
+                return a.index - b.index;
+            }
+
+            const order = getOrder(aFolder);
+            const aOrder = order.get(normalisePlaylistEntry(getName(a.item)));
+            const bOrder = order.get(normalisePlaylistEntry(getName(b.item)));
+            if (aOrder !== undefined && bOrder !== undefined) {
+                return aOrder - bOrder || a.index - b.index;
+            }
+            if (aOrder !== undefined) {
+                return -1;
+            }
+            if (bOrder !== undefined) {
+                return 1;
+            }
+            return a.index - b.index;
+        })
+        .map(({ item }) => item);
+};
+
 export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): Promise<FileAndFolder[]> => {
     const start = performance.now();
     const files: FileAndFolder[] = [];
+    const playlists: PlaylistAndFolder[] = [];
     const matchesFilter = (name: string): boolean => name.toLowerCase().endsWith(filter.toLowerCase());
 
     const addHandle = async (handle: FileSystemHandle, parentFolder?: string) => {
@@ -68,6 +153,10 @@ export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): 
                 const file = await fileHandle.getFile();
                 files.push({ file, folder: parentFolder });
                 log('drop upload: dropped handle file ready', { name: file.name, size: file.size, folder: parentFolder, elapsed: elapsed(start) });
+            } else if (isPlaylistFileName(fileHandle.name)) {
+                log('drop upload: reading dropped handle playlist', { name: fileHandle.name, folder: parentFolder, elapsed: elapsed(start) });
+                const file = await fileHandle.getFile();
+                playlists.push({ name: file.name, text: await file.text(), folder: parentFolder });
             } else {
                 log('drop upload: skipping non-mp3 handle file', { name: fileHandle.name, folder: parentFolder });
             }
@@ -123,6 +212,10 @@ export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): 
             const file = await readEntryFile(entry);
             files.push({ file, folder });
             log('drop upload: dropped file ready', { name: file.name, size: file.size, folder, elapsed: elapsed(start) });
+        } else if (isFile(entry) && isPlaylistFileName(entry.name)) {
+            log('drop upload: reading dropped playlist', { name: entry.name, folder, elapsed: elapsed(start) });
+            const file = await readEntryFile(entry);
+            playlists.push({ name: file.name, text: await file.text(), folder });
         } else if (isFile(entry)) {
             log('drop upload: skipping non-mp3 file', { name: entry.name, folder });
         }
@@ -143,39 +236,52 @@ export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): 
         }
     };
 
-    // Hold references or they disappear after first await
+    // Hold references or they disappear after first await. Also request every
+    // File System Access handle before reading any directory contents; browsers
+    // can expire later DataTransferItem handles once async file reads begin.
     const items = [...transfer.items];
+    const transferFiles = [...transfer.files];
+    const itemSources = items.map(item => {
+        const getAsFileSystemHandle = (item as DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle | null> }).getAsFileSystemHandle;
+        const handle = getAsFileSystemHandle
+            ? getAsFileSystemHandle.call(item).catch(error => {
+                warn('drop upload: file system handle path failed; falling back to legacy entry path', { error });
+                return null;
+            })
+            : undefined;
+
+        return {
+            item,
+            handle,
+            entry: item.webkitGetAsEntry()
+        };
+    });
     const legacyEntries: { item: DataTransferItem, entry: FileSystemEntry }[] = [];
     let handledWithFileSystemAccess = 0;
 
-    for (const item of items) {
-        const getAsFileSystemHandle = (item as DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle | null> }).getAsFileSystemHandle;
-        if (getAsFileSystemHandle) {
-            try {
-                const handle = await getAsFileSystemHandle.call(item);
-                if (handle) {
-                    handledWithFileSystemAccess++;
-                    await addHandle(handle);
-                    continue;
-                }
-            } catch (e) {
-                warn('drop upload: file system handle path failed; falling back to legacy entry path', { error: e });
-            }
+    for (const source of itemSources) {
+        const handle = source.handle ? await source.handle : undefined;
+        if (handle) {
+            handledWithFileSystemAccess++;
+            await addHandle(handle);
+            continue;
         }
 
-        const entry = item.webkitGetAsEntry();
-        if (entry) {
-            legacyEntries.push({ item, entry });
+        if (source.entry) {
+            legacyEntries.push({ item: source.item, entry: source.entry });
         }
     }
 
-    log('drop upload: enumerating data transfer', { items: transfer.items.length, handles: handledWithFileSystemAccess, entries: legacyEntries.length, elapsed: elapsed(start) });
+    log('drop upload: enumerating data transfer', { items: items.length, handles: handledWithFileSystemAccess, entries: legacyEntries.length, elapsed: elapsed(start) });
 
-    if (legacyEntries.length === 0 && handledWithFileSystemAccess === 0 && transfer.files.length > 0) {
-        for (const file of transfer.files) {
+    if (legacyEntries.length === 0 && handledWithFileSystemAccess === 0 && transferFiles.length > 0) {
+        for (const file of transferFiles) {
             if (matchesFilter(file.name)) {
                 files.push({ file });
                 log('drop upload: dropped file ready from file list', { name: file.name, size: file.size, elapsed: elapsed(start) });
+            } else if (isPlaylistFileName(file.name)) {
+                playlists.push({ name: file.name, text: await file.text() });
+                log('drop upload: dropped playlist ready from file list', { name: file.name, size: file.size, elapsed: elapsed(start) });
             } else {
                 log('drop upload: skipping non-mp3 file', { name: file.name });
             }
@@ -188,6 +294,9 @@ export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): 
             if (file && matchesFilter(file.name)) {
                 files.push({ file });
                 log('drop upload: dropped file ready from data transfer item', { name: file.name, size: file.size, elapsed: elapsed(start) });
+            } else if (file && isPlaylistFileName(file.name)) {
+                playlists.push({ name: file.name, text: await file.text() });
+                log('drop upload: dropped playlist ready from data transfer item', { name: file.name, size: file.size, elapsed: elapsed(start) });
             } else if (file) {
                 log('drop upload: skipping non-mp3 file', { name: file.name });
             } else {
@@ -198,8 +307,9 @@ export const getFiles = async (transfer: DataTransfer, filter = MP3_EXTENSION): 
         }
     }
 
-    log('drop upload: enumeration complete', { count: files.length, elapsed: elapsed(start) });
-    return files;
+    const orderedFiles = orderByFolderPlaylists(files, playlists, item => item.file.name, item => item.folder);
+    log('drop upload: enumeration complete', { count: orderedFiles.length, playlists: playlists.length, elapsed: elapsed(start) });
+    return orderedFiles;
 };
 
 export const getCards = (folders: Folder[]): Card[] => {

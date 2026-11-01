@@ -109,22 +109,12 @@ export const FileManager = () => {
 
         const start = performance.now();
         try {
-            if (isInternalDrag(card)) {
-                const reorderedCards = pendingReorderCards.current || cards;
-                pendingReorderCards.current = undefined;
-                updateBusy(true, 'Saving order...');
-                log('reorder: saving database', { cards: reorderedCards.length });
-                await updateFolders(buildFolders(reorderedCards));
-                log('reorder: complete', { elapsed: elapsed(start) });
-                return;
-            }
-
-            log('drop upload: start');
-            updateBusy(true, 'Reading dropped files...');
-
             const newFolders = new Map<string, Track[]>();
             const newTracks: Track[] = [];
             if (isDataTransfer(card)) {
+                log('drop upload: start');
+                updateBusy(true, 'Reading dropped files...');
+
                 const files = await getFiles(card);
                 log('drop upload: files selected', { count: files.length, elapsed: elapsed(start) });
                 if (files.length === 0) {
@@ -142,6 +132,14 @@ export const FileManager = () => {
                         }
                     }
                 }
+            } else if (isInternalDrag(card)) {
+                const reorderedCards = pendingReorderCards.current || cards;
+                pendingReorderCards.current = undefined;
+                updateBusy(true, 'Saving order...');
+                log('reorder: saving database', { cards: reorderedCards.length });
+                await updateFolders(buildFolders(reorderedCards));
+                log('reorder: complete', { elapsed: elapsed(start) });
+                return;
             }
             const folders = buildFolders(cards, { newFolders, newTracks });
             updateBusy(true, 'Saving database...');

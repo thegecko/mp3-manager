@@ -9,7 +9,7 @@
 //  Generation 7 (NW-E01x, NW-S60x/S70x, NW-S71x, NW-A80x, NW-A91x)
 //  Vaio (VGF-AP1)?
 
-import { addTags, readTags } from '../id3';
+import { addTags, readFileTags, readTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 import { transferUsbStorageCommand } from '../usb-storage';
 import { elapsed, log, warn } from '../log';
@@ -39,6 +39,25 @@ const TREE_GPLB_OFFSET = 0x30;
 const TREE_TPLB_OFFSET = 0x4040;
 const TREE_GPLB_LENGTH = 0x4010;
 const DEFAULT_GENRE = 'unknown genre';
+const ALL_DATABASE_FILES = [
+    DB_FILE,
+    '00gtrlst.dat',
+    '01tree01.dat',
+    '01tree02.dat',
+    '01tree03.dat',
+    '01tree04.dat',
+    '01tree22.dat',
+    '01tree2D.dat',
+    '02treinf.dat',
+    '03ginf01.dat',
+    '03ginf02.dat',
+    '03ginf03.dat',
+    '03ginf04.dat',
+    '03ginf22.dat',
+    '03ginf2D.dat',
+    '04patlst.dat',
+    '05cidlst.dat'
+];
 
 interface OmgTrackInfo {
     duration: number;
@@ -59,6 +78,12 @@ interface OmgTrackEntry {
     folderIndex: number;
     trackIndex: number;
     uiIndex: number;
+}
+
+interface OmgSaveChangeSet {
+    all: boolean;
+    files: Set<string>;
+    reasons: string[];
 }
 
 const QUERY_DVID_COMMAND = Uint8Array.from([
@@ -168,6 +193,7 @@ export class OmgDatabase implements Database {
     protected tracks = new Map<number, Track | undefined>;
     protected trackInfo = new Map<number, OmgTrackInfo>();
     protected reservedIds = new Set<number>();
+    protected folderSnapshot: Folder[] | undefined;
     protected constructor(
         protected rootFolder: FileSystemDirectoryHandle,
         dbBuffer: ArrayBuffer,
@@ -253,12 +279,13 @@ export class OmgDatabase implements Database {
                 artist: normaliseUnknown(artist, 'Unknown Artist')
             };
             folder.tracks.push(track);
-            this.tracks.set(id, track);
+            this.tracks.set(id, { ...track });
             this.trackInfo.set(id, { duration, frames, genre, fileProperties });
         }
 
         const tracks = folders.reduce((count, folder) => count + folder.tracks.length, 0);
         log('omg folders: scan complete', { folders: folders.length, tracks, emptySlots, missingFiles, elapsed: elapsed(start) });
+        this.folderSnapshot = this.cloneFolders(folders);
         return folders;
     }
 
@@ -304,9 +331,15 @@ export class OmgDatabase implements Database {
             this.dataOffset = FILE_HEADER_SIZE + OBJECT_POINTER_SIZE + OBJECT_HEADER_SIZE;
             this.dbView = new DataView(this.create04CNTINF(tracks, folders));
             const entries = this.createTrackEntries(tracks, folders);
-            log('omg save: generated database buffers', { tracks: tracks.length, maxId, elapsed: elapsed(start) });
+            const changeSet = this.getSaveChangeSet(folders);
+            const databaseFiles = this.getDatabaseFileBuffers(entries, maxId);
+            log('omg save: generated database buffers', { tracks: tracks.length, maxId, files: changeSet.all ? 'all' : changeSet.files.size, reasons: changeSet.reasons, elapsed: elapsed(start) });
 
             for (const entry of entries) {
+                if (!this.shouldUpdateOmaFileMetadata(entry)) {
+                    continue;
+                }
+
                 try {
                     log('omg save: updating OMA metadata if needed', { id: entry.id, name: entry.name });
                     await this.updateOmaFileMetadata(entry);
@@ -315,35 +348,133 @@ export class OmgDatabase implements Database {
                 }
             }
 
-            await this.writeDatabaseFile(DB_FILE, this.dbView.buffer);
-            await this.writeDatabaseFile('00gtrlst.dat', this.create00GTRLST());
-            await this.writeDatabaseFile('01tree01.dat', this.create01TREE01(entries));
-            await this.writeDatabaseFile('01tree02.dat', this.create01TREE02(entries));
-            await this.writeDatabaseFile('01tree03.dat', this.create01TREE03(entries));
-            await this.writeDatabaseFile('01tree04.dat', this.create01TREE04(entries));
-            await this.writeDatabaseFile('01tree22.dat', this.createStaticTreeFile(0x10, 0x10));
-            await this.writeDatabaseFile('01tree2D.dat', this.create01TREE2D(entries));
-            await this.writeDatabaseFile('02treinf.dat', this.create02TREINF(entries));
-            await this.writeDatabaseFile('03ginf01.dat', this.create03GINF01(entries));
-            await this.writeDatabaseFile('03ginf02.dat', this.create03GINF02(entries));
-            await this.writeDatabaseFile('03ginf03.dat', this.create03GINF03(entries));
-            await this.writeDatabaseFile('03ginf04.dat', this.create03GINF04(entries));
-            await this.writeDatabaseFile('03ginf22.dat', this.create03GINF22());
-            await this.writeDatabaseFile('03ginf2D.dat', this.create03GINF2D(entries));
-            await this.writeDatabaseFile('04patlst.dat', this.create04PATLST(maxId));
-            await this.writeDatabaseFile('05cidlst.dat', this.createObjectFile('CIDL', 'CILB', maxId, 0x30));
+            for (const [name, data] of databaseFiles) {
+                if (changeSet.all || changeSet.files.has(name)) {
+                    await this.writeDatabaseFile(name, data);
+                }
+            }
             log('omg save: database files written', { elapsed: elapsed(start) });
 
             this.tracks.clear();
             for (const track of tracks) {
-                this.tracks.set(track.id, track);
+                this.tracks.set(track.id, { ...track });
             }
+            this.folderSnapshot = this.cloneFolders(folders);
 
             return true;
         } catch (e) {
             console.error('Failed to write OMGAUDIO database', e);
             throw e;
         }
+    }
+
+    protected shouldUpdateOmaFileMetadata(entry: OmgTrackEntry): boolean {
+        const current = this.tracks.get(entry.id);
+        const info = this.trackInfo.get(entry.id);
+        return current?.name !== entry.name
+            || current?.artist !== entry.artist
+            || (info?.genre !== undefined && info.genre !== entry.genre);
+    }
+
+    protected getDatabaseFileBuffers(entries: OmgTrackEntry[], maxId: number): Map<string, ArrayBuffer> {
+        return new Map<string, ArrayBuffer>([
+            [DB_FILE, this.dbView.buffer],
+            ['00gtrlst.dat', this.create00GTRLST()],
+            ['01tree01.dat', this.create01TREE01(entries)],
+            ['01tree02.dat', this.create01TREE02(entries)],
+            ['01tree03.dat', this.create01TREE03(entries)],
+            ['01tree04.dat', this.create01TREE04(entries)],
+            ['01tree22.dat', this.createStaticTreeFile(0x10, 0x10)],
+            ['01tree2D.dat', this.create01TREE2D(entries)],
+            ['02treinf.dat', this.create02TREINF(entries)],
+            ['03ginf01.dat', this.create03GINF01(entries)],
+            ['03ginf02.dat', this.create03GINF02(entries)],
+            ['03ginf03.dat', this.create03GINF03(entries)],
+            ['03ginf04.dat', this.create03GINF04(entries)],
+            ['03ginf22.dat', this.create03GINF22()],
+            ['03ginf2D.dat', this.create03GINF2D(entries)],
+            ['04patlst.dat', this.create04PATLST(maxId)],
+            ['05cidlst.dat', this.createObjectFile('CIDL', 'CILB', maxId, 0x30)]
+        ]);
+    }
+
+    protected getSaveChangeSet(nextFolders: Folder[]): OmgSaveChangeSet {
+        const files = new Set<string>();
+        const reasons: string[] = [];
+        const add = (reason: string, names: string[]) => {
+            reasons.push(reason);
+            names.forEach(name => files.add(name));
+        };
+        const all = (reason: string): OmgSaveChangeSet => ({ all: true, files: new Set(ALL_DATABASE_FILES), reasons: [reason] });
+
+        if (!this.folderSnapshot) {
+            return all('no previous folder snapshot');
+        }
+
+        const previous = this.createFolderRecords(this.folderSnapshot);
+        const next = this.createFolderRecords(nextFolders);
+
+        if (previous.length !== next.length) {
+            return all('track count changed');
+        }
+
+        const previousById = new Map(previous.map(record => [record.id, record]));
+        const nextById = new Map(next.map(record => [record.id, record]));
+        const previousMaxId = previous.reduce((max, record) => Math.max(max, record.id), 0);
+        const nextMaxId = next.reduce((max, record) => Math.max(max, record.id), 0);
+
+        if (previousMaxId !== nextMaxId) {
+            return all('max track id changed');
+        }
+
+        for (const id of nextById.keys()) {
+            if (!previousById.has(id)) {
+                return all('track ids changed');
+            }
+        }
+
+        for (const current of next) {
+            const prior = previousById.get(current.id)!;
+            if (prior.name !== current.name) {
+                add('track title changed', [DB_FILE, '01tree01.dat', '01tree02.dat', '01tree04.dat', '01tree2D.dat']);
+            }
+            if (prior.artist !== current.artist) {
+                add('track artist changed', [DB_FILE, '01tree01.dat', '01tree02.dat', '01tree2D.dat', '03ginf01.dat', '03ginf02.dat', '03ginf2D.dat']);
+            }
+            if (prior.album !== current.album) {
+                add('track album/folder changed', [DB_FILE, '01tree01.dat', '01tree03.dat', '01tree2D.dat', '03ginf01.dat', '03ginf03.dat', '03ginf2D.dat']);
+            }
+            if (prior.folderIndex !== current.folderIndex || prior.trackIndex !== current.trackIndex) {
+                add('folder or track order changed', ['01tree03.dat', '03ginf03.dat']);
+            }
+        }
+
+        return { all: false, files, reasons: [...new Set(reasons)] };
+    }
+
+    protected createFolderRecords(folders: Folder[]): Array<{ id: number, name: string, artist: string, album: string, folderIndex: number, trackIndex: number }> {
+        const records: Array<{ id: number, name: string, artist: string, album: string, folderIndex: number, trackIndex: number }> = [];
+        folders.forEach((folder, folderIndex) => {
+            folder.tracks.forEach((track, trackIndex) => {
+                records.push({
+                    id: track.id,
+                    name: track.name,
+                    artist: track.artist || 'unknown artist (JS)',
+                    album: folder.name || 'unknown album (JS)',
+                    folderIndex,
+                    trackIndex
+                });
+            });
+        });
+        return records;
+    }
+
+    protected cloneFolders(folders: Folder[]): Folder[] {
+        return folders.map(folder => ({
+            id: folder.id,
+            name: folder.name,
+            tracks: folder.tracks.map(track => ({ ...track }))
+        }));
     }
 
     public async getNextTrackId(): Promise<number> {
@@ -383,7 +514,7 @@ export class OmgDatabase implements Database {
         const start = performance.now();
         try {
             log('omg upload: reading tags', { id, file: file.name, size: file.size });
-            const tags = await readTags(await file.slice(0, 128 * 1024).arrayBuffer());
+            const tags = await readFileTags(file);
             const name = tags.title || 'unknown title';
             const artist = tags.artist || 'unknown artist';
             const genre = tags.genre || DEFAULT_GENRE;
@@ -396,7 +527,7 @@ export class OmgDatabase implements Database {
             log('omg upload: writing OMA file', { id, folder: getTitleFolderName(id), file: getTitleFileName(id) });
             await this.writeOmaFile(output, file, tagSize, { ...track, genre, duration, frames });
             log('omg upload: OMA file written', { id, elapsed: elapsed(start) });
-            this.tracks.set(id, track);
+            this.tracks.set(id, { ...track });
             this.trackInfo.set(id, { duration, frames, genre, fileProperties: OMA_FILE_PROPERTIES });
             this.reservedIds.delete(id);
             return track;

@@ -1,9 +1,31 @@
 // Small ID3 library to manage text ID3 tags
 // Based on https://github.com/Zazama/node-id3
 
+const TAG_READ_SIZE = 128 * 1024;
+const ID3V1_TAG_SIZE = 128;
+
 export const readTags = async (buffer: ArrayBuffer): Promise<{ [key: string]: string }> => {
-    const tags = getTagsFromBuffer(new Uint8Array(buffer));
+    const bytes = new Uint8Array(buffer);
+    const tags = {
+        ...getId3v1TagsFromBuffer(bytes),
+        ...getTagsFromBuffer(bytes)
+    };
     return tags;
+};
+
+export const readFileTags = async (file: Blob): Promise<{ [key: string]: string }> => {
+    if (file.size <= TAG_READ_SIZE) {
+        return readTags(await file.arrayBuffer());
+    }
+
+    const [front, tail] = await Promise.all([
+        file.slice(0, TAG_READ_SIZE).arrayBuffer(),
+        file.slice(Math.max(0, file.size - ID3V1_TAG_SIZE)).arrayBuffer()
+    ]);
+    const data = new Uint8Array(front.byteLength + tail.byteLength);
+    data.set(new Uint8Array(front), 0);
+    data.set(new Uint8Array(tail), front.byteLength);
+    return readTags(data.buffer);
 };
 
 export const deleteTags = (buffer: ArrayBuffer): ArrayBuffer => {
@@ -84,6 +106,33 @@ const getTagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } => {
 
     return tags
 }
+
+const getId3v1TagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } => {
+    if (buffer.byteLength < ID3V1_TAG_SIZE) {
+        return {};
+    }
+
+    const offset = buffer.byteLength - ID3V1_TAG_SIZE;
+    if (buffer[offset] !== 0x54 || buffer[offset + 1] !== 0x41 || buffer[offset + 2] !== 0x47) {
+        return {};
+    }
+
+    const tags: { [key: string]: string } = {};
+    const title = readId3v1Text(buffer, offset + 3, 30);
+    const artist = readId3v1Text(buffer, offset + 33, 30);
+    const album = readId3v1Text(buffer, offset + 63, 30);
+    const year = readId3v1Text(buffer, offset + 93, 4);
+
+    if (title) tags.title = title;
+    if (artist) tags.artist = artist;
+    if (album) tags.album = album;
+    if (year) tags.year = year;
+
+    return tags;
+};
+
+const readId3v1Text = (buffer: Uint8Array, offset: number, length: number): string =>
+    new TextDecoder('ISO-8859-1').decode(buffer.subarray(offset, offset + length)).replace(/\0+$/g, '').trim();
 
 const removeTagsFromBuffer = (buffer: Uint8Array): Uint8Array => {
     const framePosition = getFramePosition(buffer);

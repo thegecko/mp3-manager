@@ -1,7 +1,7 @@
 import type { Folder, Track } from '../database/database-detector';
 import { useBusy, useDb, useFolders } from '../context';
 import { primaryButtonStyle } from '../styles';
-import { createFile, MP3_EXTENSION, newFolder } from './util';
+import { createFile, isPlaylistFileName, MP3_EXTENSION, newFolder, orderByFolderPlaylists, PlaylistAndFolder } from './util';
 import { elapsed, log } from '../log';
 
 export interface AddFolderProps {
@@ -15,6 +15,9 @@ interface SelectedFile {
 
 const isMp3File = (entry: FileSystemDirectoryHandle | FileSystemFileHandle): entry is FileSystemFileHandle =>
     (entry as FileSystemFileHandle).kind === 'file' && entry.name.toLowerCase().endsWith(MP3_EXTENSION);
+
+const isPlaylistFile = (entry: FileSystemDirectoryHandle | FileSystemFileHandle): entry is FileSystemFileHandle =>
+    (entry as FileSystemFileHandle).kind === 'file' && isPlaylistFileName(entry.name);
 
 export const AddFolder = ({ onCreateFolder }: AddFolderProps) => {
     const { db } = useDb();
@@ -33,12 +36,17 @@ export const AddFolder = ({ onCreateFolder }: AddFolderProps) => {
                 log('folder upload: start', { folder: folder.name });
                 updateBusy(true, `Reading folder: ${folder.name}`);
                 const selectedFiles: SelectedFile[] = [];
+                const playlists: PlaylistAndFolder[] = [];
 
                 const collectFiles = async (directory: FileSystemDirectoryHandle) => {
                     for await (const [ name, entry ] of directory.entries()) {
                         if (isMp3File(entry)) {
                             selectedFiles.push({ handle: entry, folder: directory.name });
                             log('folder upload: selected file', { folder: directory.name, name, elapsed: elapsed(start) });
+                        } else if (isPlaylistFile(entry)) {
+                            const file = await entry.getFile();
+                            playlists.push({ name: file.name, text: await file.text(), folder: directory.name });
+                            log('folder upload: selected playlist', { folder: directory.name, name, elapsed: elapsed(start) });
                         }
                     }
 
@@ -56,10 +64,11 @@ export const AddFolder = ({ onCreateFolder }: AddFolderProps) => {
                     throw new Error('No MP3 files found in the selected folder');
                 }
 
+                const orderedFiles = orderByFolderPlaylists(selectedFiles, playlists, item => item.handle.name, item => item.folder);
                 const tracksByFolder = new Map<string, Track[]>();
-                for (const [index, { handle, folder }] of selectedFiles.entries()) {
-                    updateBusy(true, `Importing ${index + 1}/${selectedFiles.length}: ${handle.name}`);
-                    log('folder upload: importing file', { folder, name: handle.name, index: index + 1, total: selectedFiles.length, elapsed: elapsed(start) });
+                for (const [index, { handle, folder }] of orderedFiles.entries()) {
+                    updateBusy(true, `Importing ${index + 1}/${orderedFiles.length}: ${handle.name}`);
+                    log('folder upload: importing file', { folder, name: handle.name, index: index + 1, total: orderedFiles.length, playlists: playlists.length, elapsed: elapsed(start) });
                     const file = await handle.getFile();
                     const track = await createFile(db, file);
                     if (track) {

@@ -6,7 +6,7 @@
 //  Generation 1 (NW-Sxx, NW-Exx except NW-E99)
 //  Generation 2 (NW-E99)
 
-import { addTags, readTags } from '../id3';
+import { addTags, readFileTags, readTags } from '../id3';
 import { Database, Folder, Track } from './database-detector';
 import { transferUsbStorageCommand } from '../usb-storage';
 import { elapsed, log } from '../log';
@@ -19,7 +19,6 @@ const DB_HEADER_TEXT = 'WMPLESYS';
 const TRACK_HEADER_TEXT = 'WMMP';
 const HEADER_SIZE = 32;
 const UNKNOWN_HEADER_OFFSET = 16;
-const TAG_READ_SIZE = 128 * 1024;
 
 const FAT_SERIAL_OFFSET = 0x27;
 const READ_SECTOR_SIZE = 512;
@@ -264,7 +263,7 @@ export class EsysDatabase implements Database {
 
     public async writeFile(id: number, file: File, duration: number, frames: number): Promise<Track | undefined> {
         try {
-            const tags = await readTags(await file.slice(0, TAG_READ_SIZE).arrayBuffer());
+            const tags = await readFileTags(file);
             const tagSize = await this.getId3Size(file);
             const fileHandle = await this.dataFolder.getFileHandle(getFilename(id), { create: true });
             await this.writeAudioFileHandle(fileHandle, id, file, tagSize, duration, frames);

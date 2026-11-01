@@ -176,7 +176,9 @@ export class EsysDatabase implements Database {
             // Backup
             const backupFile = await this.rootFolder.getFileHandle(BACKUP_FILE, { create: true });
             log('esys save: writing backup', { file: BACKUP_FILE });
-            await this.writeFileHandle(backupFile, this.view.buffer);
+            if (!await this.writeFileHandle(backupFile, this.view.buffer)) {
+                throw new Error(`Unable to write ${BACKUP_FILE}`);
+            }
 
             // Re-initialise
             this.tracks.clear();
@@ -213,7 +215,10 @@ export class EsysDatabase implements Database {
             // Write data file
             const dbFile = await this.rootFolder.getFileHandle(DB_FILE, { create: true });
             log('esys save: writing database', { file: DB_FILE, bytes: buffer.byteLength });
-            await this.writeFileHandle(dbFile, buffer);
+            if (!await this.writeFileHandle(dbFile, buffer)) {
+                throw new Error(`Unable to write ${DB_FILE}`);
+            }
+            await this.verifyFileHandle(dbFile, buffer, DB_FILE);
             log('esys save: complete', { elapsed: elapsed(start) });
 
             return true;
@@ -334,6 +339,21 @@ export class EsysDatabase implements Database {
         }
 
         return false;
+    }
+
+    protected async verifyFileHandle(fileHandle: FileSystemFileHandle, expected: ArrayBuffer, name: string): Promise<void> {
+        const file = await fileHandle.getFile();
+        const actual = new Uint8Array(await file.arrayBuffer());
+        const bytes = new Uint8Array(expected);
+        if (actual.byteLength !== bytes.byteLength) {
+            throw new Error(`${name} write verification failed: expected ${bytes.byteLength} bytes, read ${actual.byteLength}`);
+        }
+        for (let i = 0; i < bytes.byteLength; i++) {
+            if (actual[i] !== bytes[i]) {
+                throw new Error(`${name} write verification failed at byte ${i}`);
+            }
+        }
+        log('esys save: verified database write', { file: name, bytes: bytes.byteLength });
     }
 
     protected checkHeader(): void {

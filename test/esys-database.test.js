@@ -110,6 +110,17 @@ describe('EsysDatabase', () => {
         assert.ok(await backup.getFile());
     });
 
+    it('persists reordered ESYS tracks', async () => {
+        const { database } = await createDatabase();
+        const folders = await database.getFolders();
+        folders[0].tracks.reverse();
+
+        assert.equal(await database.setFolders(folders), true);
+
+        const nextFolders = await database.getFolders();
+        assert.deepEqual(nextFolders[0].tracks.map(track => track.id), [3, 1]);
+    });
+
     it('deletes encoded track files', async () => {
         const { fileSystem, database } = await createDatabase();
         const esys = await fileSystem.getDirectoryHandle('ESYS');

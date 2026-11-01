@@ -122,17 +122,40 @@ const getId3v1TagsFromBuffer = (buffer: Uint8Array): { [key: string]: string } =
     const artist = readId3v1Text(buffer, offset + 33, 30);
     const album = readId3v1Text(buffer, offset + 63, 30);
     const year = readId3v1Text(buffer, offset + 93, 4);
+    const genre = ID3V1_GENRES[buffer[offset + 127]];
 
     if (title) tags.title = title;
     if (artist) tags.artist = artist;
     if (album) tags.album = album;
     if (year) tags.year = year;
+    if (genre) tags.genre = genre;
 
     return tags;
 };
 
 const readId3v1Text = (buffer: Uint8Array, offset: number, length: number): string =>
     new TextDecoder('ISO-8859-1').decode(buffer.subarray(offset, offset + length)).replace(/\0+$/g, '').trim();
+
+const ID3V1_GENRES = [
+    'Blues', 'Classic Rock', 'Country', 'Dance', 'Disco', 'Funk', 'Grunge', 'Hip-Hop',
+    'Jazz', 'Metal', 'New Age', 'Oldies', 'Other', 'Pop', 'R&B', 'Rap', 'Reggae', 'Rock',
+    'Techno', 'Industrial', 'Alternative', 'Ska', 'Death Metal', 'Pranks', 'Soundtrack',
+    'Euro-Techno', 'Ambient', 'Trip-Hop', 'Vocal', 'Jazz+Funk', 'Fusion', 'Trance',
+    'Classical', 'Instrumental', 'Acid', 'House', 'Game', 'Sound Clip', 'Gospel', 'Noise',
+    'AlternRock', 'Bass', 'Soul', 'Punk', 'Space', 'Meditative', 'Instrumental Pop',
+    'Instrumental Rock', 'Ethnic', 'Gothic', 'Darkwave', 'Techno-Industrial', 'Electronic',
+    'Pop-Folk', 'Eurodance', 'Dream', 'Southern Rock', 'Comedy', 'Cult', 'Gangsta',
+    'Top 40', 'Christian Rap', 'Pop/Funk', 'Jungle', 'Native American', 'Cabaret',
+    'New Wave', 'Psychadelic', 'Rave', 'Showtunes', 'Trailer', 'Lo-Fi', 'Tribal',
+    'Acid Punk', 'Acid Jazz', 'Polka', 'Retro', 'Musical', 'Rock & Roll', 'Hard Rock',
+    'Folk', 'Folk-Rock', 'National Folk', 'Swing', 'Fast Fusion', 'Bebob', 'Latin',
+    'Revival', 'Celtic', 'Bluegrass', 'Avantgarde', 'Gothic Rock', 'Progressive Rock',
+    'Psychedelic Rock', 'Symphonic Rock', 'Slow Rock', 'Big Band', 'Chorus', 'Easy Listening',
+    'Acoustic', 'Humour', 'Speech', 'Chanson', 'Opera', 'Chamber Music', 'Sonata',
+    'Symphony', 'Booty Bass', 'Primus', 'Porn Groove', 'Satire', 'Slow Jam', 'Club',
+    'Tango', 'Samba', 'Folklore', 'Ballad', 'Power Ballad', 'Rhythmic Soul', 'Freestyle',
+    'Duet', 'Punk Rock', 'Drum Solo', 'A capella', 'Euro-House', 'Dance Hall'
+];
 
 const removeTagsFromBuffer = (buffer: Uint8Array): Uint8Array => {
     const framePosition = getFramePosition(buffer);

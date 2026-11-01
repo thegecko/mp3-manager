@@ -22,6 +22,7 @@ export const FileManager = () => {
     const { folders, updateFolders } = useFolders();
     const { updateBusy } = useBusy();
     const [cards, setCards] = useState([] as Card[]);
+    const cardsRef = useRef([] as Card[]);
     const [collapsedFolder, setCollapsedFolder] = useState(undefined as number | undefined);
     const pendingReorderCards = useRef<Card[] | undefined>();
 
@@ -32,19 +33,27 @@ export const FileManager = () => {
             type: 'new',
             name: TRACK_LABEL
         };
-        setCards(prevCards => [
-            ...prevCards,
-            newCard
-        ]);
+        setCards(prevCards => {
+            const nextCards = [
+                ...prevCards,
+                newCard
+            ];
+            cardsRef.current = nextCards;
+            return nextCards;
+        });
         return newCard;
-    }, [cards])
+    }, [])
 
     const clearNew = () => {
-        const hasNew = cards.some(card => card.type === 'new');
+        const hasNew = cardsRef.current.some(card => card.type === 'new');
         if (hasNew) {
-            setCards(prevCards => [
-                ...prevCards.filter(card => card.type !== 'new')
-            ]);
+            setCards(prevCards => {
+                const nextCards = [
+                    ...prevCards.filter(card => card.type !== 'new')
+                ];
+                cardsRef.current = nextCards;
+                return nextCards;
+            });
         }
     };
 
@@ -57,14 +66,15 @@ export const FileManager = () => {
     let dragid: number | undefined;
     let hoverid: number | undefined;
     const onMove = (dragRef: Card, hoverRef: Card): void => {
+        const currentCards = cardsRef.current;
         if (requestedFrame || dragRef.id === dragid && hoverRef.id === hoverid) {
             return;
         }
 
         dragid = dragRef.id;
         hoverid = hoverRef.id;
-        const removeIndex = cards.indexOf(dragRef)
-        let insertIndex = cards.indexOf(hoverRef)
+        const removeIndex = currentCards.indexOf(dragRef)
+        let insertIndex = currentCards.indexOf(hoverRef)
 
         if (removeIndex < 0 || insertIndex < 0) {
             return;
@@ -72,8 +82,8 @@ export const FileManager = () => {
 
         const trackCount = (folderIndex: number) => {
             let count = 0;
-            for (let i = folderIndex + 1; i < cards.length; i++) {
-                if (cards[i].type === 'folder') {
+            for (let i = folderIndex + 1; i < currentCards.length; i++) {
+                if (currentCards[i].type === 'folder') {
                     break;
                 }
                 count++;
@@ -91,10 +101,11 @@ export const FileManager = () => {
             }
         }
 
-        const newCards = [...cards];
+        const newCards = [...currentCards];
         const deletedCards = newCards.splice(removeIndex, removeCount);
         newCards.splice(insertIndex, 0, ...deletedCards);
         pendingReorderCards.current = newCards;
+        cardsRef.current = newCards;
 
         requestedFrame = requestAnimationFrame(() => {
             setCards(newCards);
@@ -133,7 +144,7 @@ export const FileManager = () => {
                     }
                 }
             } else if (isInternalDrag(card)) {
-                const reorderedCards = pendingReorderCards.current || cards;
+                const reorderedCards = pendingReorderCards.current || cardsRef.current;
                 pendingReorderCards.current = undefined;
                 updateBusy(true, 'Saving order...');
                 log('reorder: saving database', { cards: reorderedCards.length });
@@ -141,7 +152,7 @@ export const FileManager = () => {
                 log('reorder: complete', { elapsed: elapsed(start) });
                 return;
             }
-            const folders = buildFolders(cards, { newFolders, newTracks });
+            const folders = buildFolders(cardsRef.current, { newFolders, newTracks });
             updateBusy(true, 'Saving database...');
             log('drop upload: saving database', { folders: folders.length, elapsed: elapsed(start) });
             await updateFolders(folders);
@@ -164,7 +175,7 @@ export const FileManager = () => {
 
             // Delete files
             let deletingTracks = false;
-            for (const card of cards) {
+            for (const card of cardsRef.current) {
                 if (card.type === 'folder') {
                     deletingTracks = toDelete.id === card.id;
                 } else if (deletingTracks || toDelete.id === card.id) {
@@ -172,7 +183,7 @@ export const FileManager = () => {
                 }
             }
 
-            const folders = buildFolders(cards, { deleteId: toDelete.id });
+            const folders = buildFolders(cardsRef.current, { deleteId: toDelete.id });
             updateBusy(true, 'Saving database...');
             await updateFolders(folders);
         } finally {
@@ -195,12 +206,13 @@ export const FileManager = () => {
         }
 
         // Rename card
-        const newCards = [...cards];
+        const newCards = [...cardsRef.current];
         const card = newCards.find(card => card.id === toRename.id);
         if (card) {
             card.name = newTitle;
             card.artist = newArtist;
         }
+        cardsRef.current = newCards;
 
         const folders = buildFolders(newCards);
         await updateFolders(folders);
@@ -271,9 +283,9 @@ export const FileManager = () => {
                 }
 
                 if (tracks.length > 0) {
-                    let insertIndex = cards.indexOf(folderRef) + 1;
+                    let insertIndex = cardsRef.current.indexOf(folderRef) + 1;
                     if (insertIndex >= 0) {
-                        const newCards = [...cards];
+                        const newCards = [...cardsRef.current];
                         newCards.splice(insertIndex, 0, {
                             id: NEW_ID,
                             type: 'new',
@@ -317,9 +329,9 @@ export const FileManager = () => {
                 const track = await createFile(db, file);
 
                 if (track) {
-                    let insertIndex = cards.indexOf(folderRef) + 1;
+                    let insertIndex = cardsRef.current.indexOf(folderRef) + 1;
                     if (insertIndex >= 0) {
-                        const newCards = [...cards];
+                        const newCards = [...cardsRef.current];
                         newCards.splice(insertIndex, 0, {
                             id: NEW_ID,
                             type: 'new',
@@ -341,13 +353,16 @@ export const FileManager = () => {
     const onCreateFolder = (name: string) => {
         setCards(prevCards => {
             const lowestId = prevCards.reduce((lowest, card) => Math.min(lowest, card.id), -1);
-            return [{ id: lowestId - 1, type: 'folder', name }, ...prevCards];
+            const nextCards = [{ id: lowestId - 1, type: 'folder', name }, ...prevCards];
+            cardsRef.current = nextCards;
+            return nextCards;
         });
     };
 
     // Cards
     useMemo(() => {
         const cards = getCards(folders);
+        cardsRef.current = cards;
         setCards(cards);
     }, [folders]);
 
